@@ -1,8 +1,8 @@
-# SigProc_Comm
+# sigcom-toolkit
 
 ## Overview
 
-SigProc_Comm is a signal processing and communication library designed to facilitate various operations related to signal processing, data analysis, and wireless communication protocols. This library leverages popular Python packages to provide a comprehensive toolkit for researchers and engineers.
+sigcom-toolkit is a signal processing and communication library designed to facilitate various operations related to signal processing, data analysis, and wireless communication protocols. This library leverages popular Python packages to provide a comprehensive toolkit for researchers and engineers.
 
 ## Features
 
