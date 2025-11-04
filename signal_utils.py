@@ -1490,8 +1490,10 @@ class Signal_Utils(General):
 
 
     def filter_aoa(self, rx_phase_list, rx_phase, aoa_list, aoa):
-        alpha_phase = 0.5
-        alpha_aoa = 0.5
+        # alpha_phase = 0.5
+        # alpha_aoa = 0.5
+        alpha_phase = 1.0
+        alpha_aoa = 1.0
 
         if len(aoa_list) > 0:
             aoa_last = aoa_list[-1]
@@ -1538,9 +1540,8 @@ class Signal_Utils(General):
         # # rx_phase = np.angle(z)
         # rx_phase = np.angle(rxtd[0,im] * np.conj(rxtd[1,im]))
 
-        # rx_phase -= rx_phase_offset
-        rx_phase -= (rx_delay_offset * 2 * np.pi * fc)
-        # print("rx_phase: ", rx_phase)
+        rx_phase -= rx_phase_offset
+        # rx_phase -= (rx_delay_offset * 2 * np.pi * fc)
 
         angle_sin = rx_phase/(2*np.pi*self.ant_dx)
         if angle_sin > 1 or angle_sin < -1:
