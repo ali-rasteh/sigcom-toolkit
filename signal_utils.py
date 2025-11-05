@@ -1531,6 +1531,7 @@ class Signal_Utils(General):
             rxtd = np.mean(rxtd.copy(), axis=0)
         rx_phase = self.calc_phase_offset(rxtd[0,:], rxtd[1,:])
 
+        rx_phase = np.angle(np.exp(1j * rx_phase))
         rx_phase -= rx_phase_offset
         # rx_phase -= (rx_delay_offset * 2 * np.pi * fc)
 
