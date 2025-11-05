@@ -1674,8 +1674,12 @@ class Signal_Utils(General):
 
 
     def draw_half_gauge(self, ax, min_val=-90, max_val=90):
-        ax.add_patch(Wedge((0.5, 0.5), 0.4, 90, -90, color='#f0f0f0', zorder=1))
-        ax.add_patch(Wedge((0.5, 0.5), 0.35, 90, -90, color='#e0e0e0', zorder=2))
+        # Left half gauge
+        ax.add_patch(Wedge((0.5, 0.5), 0.4, 90, -90, color="#B5A4D6", zorder=1))
+        ax.add_patch(Wedge((0.5, 0.5), 0.35, 90, -90, color="#E6E6FA", zorder=2))
+        # Right half gauge
+        ax.add_patch(Wedge((0.5, 0.5), 0.4, -90, 90, color="#B5A4D6", zorder=1))
+        ax.add_patch(Wedge((0.5, 0.5), 0.35, -90, 90, color="#E6E6FA", zorder=2))
 
         num_ticks = 18
         for i in range(num_ticks + 1):
@@ -1692,7 +1696,7 @@ class Signal_Utils(General):
             y = 0.5 + 0.28 * np.sin(np.radians(angle))
             ax.text(x, y, f'{int(value)}', fontsize=10, ha='center', va='center')
 
-        ax.add_patch(Circle((0.5, 0.5), 0.05, color='black', zorder=5))
+        ax.add_patch(Circle((0.5, 0.5), 0.05, color="black", zorder=5))
         ax.text(0.5, 0.95, "Angle of Arrival", fontsize=20, fontweight='bold', horizontalalignment='center')
         ax.set_aspect('equal')
 
@@ -1705,7 +1709,7 @@ class Signal_Utils(General):
         x = 0.5 + 0.35 * np.cos(np.radians(angle))
         y = 0.5 + 0.35 * np.sin(np.radians(angle))
 
-        arrow = FancyArrow(0.5, 0.5, x-0.5, y-0.5, width=0.02, head_width=0.05, head_length=0.08, color='darkblue', zorder=6)
+        arrow = FancyArrow(0.5, 0.5, x-0.5, y-0.5, width=0.02, head_width=0.05, head_length=0.08, color='#57068C', zorder=6)
 
         old_arrows = [p for p in ax.patches if isinstance(p, FancyArrow)]
         for old_arrow in old_arrows:
