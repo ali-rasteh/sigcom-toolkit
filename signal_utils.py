@@ -1530,6 +1530,7 @@ class Signal_Utils(General):
         if len(rxtd.shape) == 3:
             rxtd = np.mean(rxtd.copy(), axis=0)
         rx_phase = self.calc_phase_offset(rxtd[0,:], rxtd[1,:])
+        print(rx_phase)
 
         # h_full_ = h_full.copy()[:,0,:]
         # h_full_ = np.sum(np.abs(h_full_)**2, axis=0)
