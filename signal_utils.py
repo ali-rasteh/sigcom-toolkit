@@ -1531,17 +1531,11 @@ class Signal_Utils(General):
             rxtd = np.mean(rxtd.copy(), axis=0)
         rx_phase = self.calc_phase_offset(rxtd[0,:], rxtd[1,:])
 
-        # h_full_ = h_full.copy()[:,0,:]
-        # h_full_ = np.sum(np.abs(h_full_)**2, axis=0)
-        # im = np.argmax(h_full_)
-        # # i0 = np.maximum(0, im-10)
-        # # i1 = np.minimum(self.nfft_ch, im+10)
-        # # z = np.mean(rxtd[0, i0:i1] * np.conj(rxtd[1, i0:i1]))
-        # # rx_phase = np.angle(z)
-        # rx_phase = np.angle(rxtd[0,im] * np.conj(rxtd[1,im]))
-
         rx_phase -= rx_phase_offset
         # rx_phase -= (rx_delay_offset * 2 * np.pi * fc)
+
+        # Wrap phase between -pi and pi
+        rx_phase = np.angle(np.exp(1j * rx_phase))
 
         angle_sin = rx_phase/(2*np.pi*self.ant_dx)
         if angle_sin > 1 or angle_sin < -1:
