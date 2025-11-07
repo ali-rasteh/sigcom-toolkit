@@ -82,6 +82,8 @@ class Signal_Utils(General):
         self.om_trx = getattr(params, 'om_trx', np.linspace(-np.pi, np.pi, self.nfft_trx, endpoint=True))
         self.om_ch = getattr(params, 'om_ch', self.om_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)])
 
+        self.kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
+
     def lin_to_db(self, x, mode='pow'):
         if mode=='pow':
             return 10*np.log10(x)
@@ -94,7 +96,7 @@ class Signal_Utils(General):
         elif mode == 'mag':
             return 10**(x/20)
 
-    def wrap_angle_rad(self, a, mode='rad'):
+    def wrap_angle(self, a, mode='rad'):
         if mode=='rad':
             # return (a + np.pi) % (2*np.pi) - np.pi
             return np.angle(np.exp(1j * a))
@@ -115,7 +117,7 @@ class Signal_Utils(General):
         elif ant_dim == 2:
             aoa = np.array([np.arcsin(phase * wl / (2 * np.pi * ant_dx_m)), np.arcsin(phase * wl / (2 * np.pi * ant_dy_m))])
         return aoa
-    
+
     def mse(self, x, y):
         return np.mean(np.abs(x - y) ** 2)
     
@@ -1494,7 +1496,13 @@ class Signal_Utils(General):
         if aoa is None:
             aoa = aoa_last
         else:
-            aoa = alpha_aoa * aoa + (1 - alpha_aoa) * aoa_last
+            # aoa = alpha_aoa * aoa + (1 - alpha_aoa) * aoa_last
+            # Use Kalman filter to smooth the AOA gauge signal
+            if not aoa_list:
+                aoa_list.append(aoa)
+            window_deg = np.rad2deg(aoa_list[-10:])
+            aoa = self.wrap_angle(self.kalman_filter.step(window_deg), mode='deg')
+            aoa = np.deg2rad(aoa)
 
 
         if len(rx_phase_list) > 0:
@@ -1507,7 +1515,13 @@ class Signal_Utils(General):
         if rx_phase is None:
             rx_phase = rx_phase_last
         else:
-            rx_phase = alpha_phase * rx_phase + (1 - alpha_phase) * rx_phase_last
+            # rx_phase = alpha_phase * rx_phase + (1 - alpha_phase) * rx_phase_last
+            # Use Kalman filter to smooth the RX phase signal
+            if not rx_phase_list:
+                rx_phase_list.append(rx_phase)
+            window_deg = np.rad2deg(rx_phase_list[-10:])
+            rx_phase = self.wrap_angle(self.kalman_filter.step(window_deg), mode='deg')
+            rx_phase = np.deg2rad(rx_phase)
 
         rx_phase_list.append(rx_phase)
         aoa_list.append(aoa)
