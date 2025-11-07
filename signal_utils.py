@@ -82,7 +82,6 @@ class Signal_Utils(General):
         self.om_trx = getattr(params, 'om_trx', np.linspace(-np.pi, np.pi, self.nfft_trx, endpoint=True))
         self.om_ch = getattr(params, 'om_ch', self.om_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)])
 
-
     def lin_to_db(self, x, mode='pow'):
         if mode=='pow':
             return 10*np.log10(x)
@@ -94,7 +93,14 @@ class Signal_Utils(General):
             return 10**(x/10)
         elif mode == 'mag':
             return 10**(x/20)
-        
+
+    def wrap_angle_rad(self, a, mode='rad'):
+        if mode=='rad':
+            # return (a + np.pi) % (2*np.pi) - np.pi
+            return np.angle(np.exp(1j * a))
+        elif mode=='deg':
+            # return (a + 180.0) % 360.0 - 180.0
+            return np.rad2deg(np.angle(np.exp(1j * np.deg2rad(a))))
 
     def aoa_to_phase(self, aoa, wl=0.01, ant_dim=1, ant_dx_m=0, ant_dy_m=0):
         if ant_dim == 1:
@@ -102,7 +108,6 @@ class Signal_Utils(General):
         elif ant_dim == 2:
             phase = 2 * np.pi * ant_dx_m / wl * np.sin(aoa[0]) + 2 * np.pi * ant_dy_m / wl * np.sin(aoa[1])
         return phase
-    
 
     def phase_to_aoa(self, phase, wl=0.01, ant_dim=1, ant_dx_m=0, ant_dy_m=0):
         if ant_dim == 1:
@@ -111,10 +116,8 @@ class Signal_Utils(General):
             aoa = np.array([np.arcsin(phase * wl / (2 * np.pi * ant_dx_m)), np.arcsin(phase * wl / (2 * np.pi * ant_dy_m))])
         return aoa
     
-
     def mse(self, x, y):
         return np.mean(np.abs(x - y) ** 2)
-    
     
     def sinc(self, x):
         sinc = np.sinc(x)       # sin(pi.x)/(pi.x)
@@ -158,7 +161,6 @@ class Signal_Utils(General):
         X = np.dot(twiddle_factor, x)
         return X
 
-
     def psd(self, x, fs=None, nfft=None):
         if fs is None:
             fs = self.fs
@@ -167,7 +169,6 @@ class Signal_Utils(General):
         freq, psd = welch(x, fs, nperseg=nfft)
         return (freq, psd)
     
-
     def calculate_snr(self, sig_td, sig_sc_range=[0, 0]):
         # Calculate the SNR of a signal in the frequency domain
         sig_fd = fftshift(fft(sig_td, axis=-1))
@@ -197,7 +198,6 @@ class Signal_Utils(General):
 
         return snr
 
-
     def rotation_matrix(self, dim=2, angles=[0]):
         if dim==2:
             theta = angles[0]
@@ -211,7 +211,6 @@ class Signal_Utils(General):
     
     def l2_norm(self, x):
         return np.linalg.norm(x)
-    
     
     def upsample(self, signal, up=2):
         """
@@ -231,7 +230,6 @@ class Signal_Utils(General):
 
         return upsampled_sig
 
-
     def cross_correlation(self, sig_1, sig_2, index):
         if index >= 0:
             padded_sig_2 = np.concatenate((np.zeros(index, dtype=complex), sig_2[:len(sig_2) - index]))
@@ -240,7 +238,6 @@ class Signal_Utils(General):
 
         cros_corr = np.mean(sig_1 * np.conj(padded_sig_2))
         return cros_corr
-    
 
     def integrate_signal(self, signal, n_samples=1024):
         n_ant = signal.shape[0]
@@ -248,7 +245,6 @@ class Signal_Utils(General):
         signal = np.mean(signal, axis=1)
 
         return signal
-
 
     def extract_delay(self, sig_1, sig_2, plot_corr=False):
         """
@@ -278,7 +274,6 @@ class Signal_Utils(General):
         delay = int(lags[max_idx])
         # self.print(f'Time delay between the two signals: {delay} samples',4)
         return delay
-    
 
     def extract_frac_delay(self, sig_1, sig_2, sc_range=[0, 0]):
     
@@ -324,7 +319,6 @@ class Signal_Utils(General):
 
         return frac_delay
     
-
     def calc_phase_offset(self, sig_1, sig_2, sc_range=[0, 0]):
         # Return the phase offset between two signals in radians
         corr = np.correlate(sig_1, sig_2)
@@ -333,7 +327,6 @@ class Signal_Utils(General):
 
         return phase_offest
     
-
     def adjust_phase(self, sig_1, sig_2, phase_offset):
         # Adjust the phase of sig_1 with respect to sig_2 based on the given phase offset
         sig_1_adj = sig_1 * np.exp(-1j * phase_offset)
@@ -341,7 +334,6 @@ class Signal_Utils(General):
 
         return sig_1_adj, sig_2_adj
     
-
     def time_adjust(self, sig_1, sig_2, delay):
         """
         Adjust the time of sig_1 with respect to sig_2 based on the given delay.
@@ -376,7 +368,6 @@ class Signal_Utils(General):
 
         return sig_1_adj, sig_2_adj, mse, err2sig_ratio
 
-
     def adjust_frac_delay(self, sig_1, sig_2, frac_delay):
         sig_1 = sig_1.copy()
         sig_2 = sig_2.copy()
@@ -387,7 +378,6 @@ class Signal_Utils(General):
         omega = np.linspace(-np.pi, np.pi, n_samples)
         sig_1_f = np.exp(1j * omega * frac_delay) * sig_1_f
         sig_1_adj = ifft(ifftshift(sig_1_f), axis=-1)
-
 
         # sig_1 = np.roll(sig_1, 1)
         # frac_delay = 1-frac_delay
@@ -403,12 +393,11 @@ class Signal_Utils(General):
         # # Apply the filter to the signal
         # sig_1_adj = lfilter(h, 1.0, sig_1)
 
-
         # sig_1_adj = sig_1.copy()
         sig_2_adj = sig_2.copy()
 
         return sig_1_adj, sig_2_adj
-    
+
 
     def gen_spatial_sig(self, ant_dim=1, N_sig=1, N_r=1, az_range=[-np.pi, np.pi], el_range=[-np.pi/2, np.pi/2], mode='uniform'):
         if ant_dim == 1:
@@ -1716,6 +1705,78 @@ class Signal_Utils(General):
             old_arrow.remove()
 
         ax.add_patch(arrow)
-        
 
+
+class AoAKalmanFilter:
+    """
+    Wrapped-angle Kalman filter with a persistent prior across windows.
+    State is [angle; angular_rate]. All internal math uses radians; inputs/outputs
+    to the public API are in degrees where noted.
+
+    Parameters
+    ----------
+    dt : float
+        Sampling period (in seconds) of the AoA measurements inside one fusion
+        window (e.g., 0.1 for 100 ms). This also sets the discrete-time model step.
+    sigma_meas_deg : float
+        Standard deviation of the AoA measurement noise in degrees.
+        Smaller -> the filter trusts measurements more; larger -> trusts the model more.
+    sigma_acc_deg : float, optional (default=0.3)
+        Standard deviation (in deg/s^2) of the angular acceleration driving
+        the process noise. Larger -> more responsive to rapid changes (less smooth);
+        smaller -> smoother output (more model-trusting).
+    init_angle_deg : float or None, optional
+        If provided, the filter is initialized with this AoA (in degrees).
+        If None, the first observed sample in `step()` will be used to initialize.
+
+    Notes
+    -----
+    - Angles are wrapped to (-pi, pi] internally to avoid discontinuities.
+    - The constant-velocity (angle-rate) model is used:
+        x_k = [ angle_k, angular_rate_k ]^T
+        x_{k+1} = F x_k + w_k,  z_k = H x_k + v_k
+      with F = [[1, dt], [0, 1]], H = [[1, 0]].
+    """
+
+    def __init__(self, dt, sigma_meas_deg, sigma_acc_deg=0.3, init_angle_deg=None):
+        self.dt = float(dt)
+        self.sigma_meas = float(np.deg2rad(sigma_meas_deg))
+        self.sigma_acc = float(np.deg2rad(sigma_acc_deg))
+        self.F = np.array([[1.0, self.dt],[0.0, 1.0]])
+        self.H = np.array([[1.0, 0.0]])
+        self.Q = self.sigma_acc**2 * np.array([[self.dt**3/3.0, self.dt**2/2.0],
+                                               [self.dt**2/2.0, self.dt]])
+        self.R = self.sigma_meas**2
+        self.P = np.diag([np.deg2rad(30.0)**2, np.deg2rad(2.0)**2])
+        self.initialized = False
+        self.x = None
+        if init_angle_deg is not None:
+            self.reset(init_angle_deg)
+    
+    def wrap_angle_rad(self, a):
+        return (a + np.pi) % (2*np.pi) - np.pi
+
+    def wrap_angle_deg(self, a):
+        return (a + 180.0) % 360.0 - 180.0
+
+    def reset(self, init_angle_deg):
+        self.x = np.array([np.deg2rad(init_angle_deg), 0.0])
+        self.x[0] = self.wrap_angle_rad(self.x[0])
+        self.P = np.diag([np.deg2rad(30.0)**2, np.deg2rad(2.0)**2])
+        self.initialized = True
+
+    def step(self, angles_deg_1s):
+        z_list = np.deg2rad(np.asarray(angles_deg_1s, dtype=float))
+        if not self.initialized:
+            self.reset(np.rad2deg(z_list[0]))
+        for z in z_list:
+            self.x = self.F @ self.x
+            self.P = self.F @ self.P @ self.F.T + self.Q
+            innov = self.wrap_angle_rad(z - (self.H @ self.x)[0])
+            S = (self.H @ self.P @ self.H.T)[0, 0] + self.R
+            K = (self.P @ self.H.T)[:, 0] / S
+            self.x = self.x + K * innov
+            self.P = (np.eye(2) - K[:, None] @ self.H) @ self.P
+            self.x[0] = self.wrap_angle_rad(self.x[0])
+        return float(np.rad2deg(self.x[0]))
 
