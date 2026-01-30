@@ -113,8 +113,7 @@ class Sim(Signal_Utils):
                 lossavg_dB=10, tx=None, npath_est=4, stop_thresh=0.03, region=None):
         # Parameters
         self.fc = fc  # Carrier frequency
-        self.c = constants.c  # Speed of light
-        self.lam = self.c/self.fc  # Wavelength
+        self.lam = constants.c/self.fc  # Wavelength
         self.fsamp = fsamp  # Sampling frequency
         self.bw = bw    # Sounding bandwidth relative to the sampling rate
         self.nfft = nfft  # Number of FFT points
@@ -279,7 +278,7 @@ class Sim(Signal_Utils):
         self.coeffs = self.coeffs*phase[None,:,:]
 
         # Find the reference distance for each measurement from the first path
-        dsamp = self.c/self.fsamp  # Distance traveled in one sample period
+        dsamp = constants.c/self.fsamp  # Distance traveled in one sample period
         # What is dnom?
         dnom = 10*dsamp
         self.distref = np.mean(self.dist[:,:,0], axis=0) - dnom + np.random.uniform(-0.5,0.5,self.nmeas)*dsamp
@@ -319,7 +318,7 @@ class Sim(Signal_Utils):
             indsamp = slice(0,self.nfft)
 
         # Compute the expected path locations in samples
-        self.path_samp = self.distrel / self.c * self.fsamp
+        self.path_samp = self.distrel / constants.c * self.fsamp
         self.path_pow = 20*np.log10(np.abs(self.coeffs))
         self.chan_pow =  20*np.log10(np.abs(self.chan_td))
 
@@ -380,7 +379,7 @@ class Sim(Signal_Utils):
         gresp1 = self.gresp.reshape(self.gresp.shape + (1,)*ndims)
         
         # Compute the phase
-        phase = 2*np.pi*freq1*dist1 / self.c
+        phase = 2*np.pi*freq1*dist1 / constants.c
         h = gresp1*coeffs1*np.exp(-1j*phase)
 
         # If we are not computing the basis functions, we sum over the 
@@ -516,7 +515,7 @@ class Sim(Signal_Utils):
 
 
                 dly = self.sparse_dly_est[ipath] - self.sparse_dly_est[0] + self.abs_delay[0]
-                dist_rel = dly * self.c
+                dist_rel = dly * constants.c
                 d_diff = np.sum(np.abs(self.dtest[:,:,:] - dist_rel[:,:,None]), axis=(0,1))
                 im = np.argmin(d_diff)
 
@@ -542,9 +541,9 @@ class Sim(Signal_Utils):
             self.fit_coeffs(npath_fit=ipath+1)
 
             if ipath == 0:
-                self.abs_delay[ipath] = self.dist_est[:,:,ipath] / self.c
+                self.abs_delay[ipath] = self.dist_est[:,:,ipath] / constants.c
             else:
-                # self.abs_delay[ipath] = self.dist_est[:,:,ipath] / self.c
+                # self.abs_delay[ipath] = self.dist_est[:,:,ipath] / constants.c
                 self.abs_delay[ipath] = dly.copy()
             
 
@@ -562,7 +561,7 @@ class Sim(Signal_Utils):
 
         # Compute the sample offset for all other distances
         dtest_mean = np.mean(self.dtest, axis=0)
-        self.abs_delay_offset = (dtest_mean - self.distref_est[:,None])/self.c
+        self.abs_delay_offset = (dtest_mean - self.distref_est[:,None])/constants.c
         self.samp_offset = self.abs_delay_offset * self.fsamp
         self.samp_offset = np.round(self.samp_offset).astype(int)
         self.samp_offset = np.maximum(0, self.samp_offset)
