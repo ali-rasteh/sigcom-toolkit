@@ -1,3 +1,4 @@
+from dataclasses import dataclass, fields, replace
 import os
 import time
 import shutil
@@ -16,14 +17,33 @@ try:
     import torch
 except:
     pass
-try:
-    import tensorflow as tf
-except:
-    pass
-try:
-    import sionna
-except:
-    pass
+
+
+@dataclass
+class GeneralConfig:
+    verbose_level: int = 5
+    plot_level: int = 5
+    figs_dir: str = './figs/'
+    logs_dir: str = './logs/'
+    data_dir: str = './data/'
+    random_str: str = ''
+
+    def update_from_config(self, config):
+        """
+        Update all existing parameters of this config from another config
+        object or a dict. Extra keys/attributes are ignored.
+        """
+        if isinstance(config, dict):
+            source = config
+            for f in fields(self):
+                if f.name in source:
+                    setattr(self, f.name, source[f.name])
+        else:
+            # assume config is an object with attributes
+            for f in fields(self):
+                if hasattr(config, f.name):
+                    setattr(self, f.name, getattr(config, f.name))
+        return self
 
 
 class General(object):
@@ -32,52 +52,27 @@ class General(object):
     Attributes
     """
 
-    def __init__(self, params=None):
-        """
-        Initializes the class with the given parameters.
-        Args:
-            params (object): An object containing the following attributes:
-                verbose_level (int, optional): The verbosity level. Default is 5, which prints all messages.
-                plot_level (int, optional): The plot level. Default is 5, which shows all plots.
-                figs_dir (str, optional): Directory for saving figures. Default is None.
-                logs_dir (str, optional): Directory for saving logs. Default is None.
-                data_dir (str, optional): Directory for saving data. Default is None.
-                random_str (str, optional): A random string for this run. Default is ''.
-                import_cupy (bool, optional): Flag to import CuPy. Default is False.
-                use_cupy (bool, optional): Flag to use CuPy. Default is False.
-                gpu_id (int, optional): GPU ID to use. Default is 0.
-                use_torch (bool, optional): Flag to use PyTorch. Default is False.
-        """
-            
-        self.verbose_level = getattr(params, 'verbose_level', 5)
-        self.plot_level = getattr(params, 'plot_level', 5)
-        self.figs_dir = getattr(params, 'figs_dir', './figs/')
-        self.logs_dir = getattr(params, 'logs_dir', './logs/')
-        self.data_dir = getattr(params, 'data_dir', './data/')
-        self.random_str = getattr(params, 'random_str', '')
-        
-        self.import_cupy = getattr(params, 'import_cupy', False)
-        self.use_cupy = getattr(params, 'use_cupy', False)
-        self.gpu_id = getattr(params, 'gpu_id', 0)
+    def __init__(self, config: GeneralConfig, **overrides):
+        # strict override: only allow existing fields
+        allowed = set(config.__dataclass_fields__.keys())
+        unknown = set(overrides) - allowed
+        if unknown:
+            raise TypeError(f"Unknown parameter(s): {sorted(unknown)}")
 
-        self.use_torch = getattr(params, 'use_torch', False)
-        if self.use_torch:
-            self.init_device_torch()
-        else:
-            self.device = None
+        self.config = replace(config, **overrides)  # makes a new config
 
 
     def create_dirs(self):
         """
         Creates directories for figures, logs, and data if they do not exist.
-        This method checks if the directories specified by `self.figs_dir`, `self.logs_dir`,
-        and `self.data_dir` exist. If they do not exist, it creates them.
+        This method checks if the directories specified by `self.config.figs_dir`, `self.config.logs_dir`,
+        and `self.config.data_dir` exist. If they do not exist, it creates them.
         Returns:
             None
         """
-        os.makedirs(self.figs_dir, exist_ok=True)
-        os.makedirs(self.logs_dir, exist_ok=True)
-        os.makedirs(self.data_dir, exist_ok=True)
+        os.makedirs(self.config.figs_dir, exist_ok=True)
+        os.makedirs(self.config.logs_dir, exist_ok=True)
+        os.makedirs(self.config.data_dir, exist_ok=True)
         
         
     def copy(self):
@@ -92,7 +87,7 @@ class General(object):
             thr (int): The threshold level for verbosity. The text will be printed only if
                        the instance's verbose_level is greater than or equal to this value. Defaults to 0.
         """
-        if self.verbose_level>=thr:
+        if self.config.verbose_level>=thr:
             print(text)
 
 
@@ -110,9 +105,9 @@ class General(object):
         """
 
         letters = string.ascii_letters + string.digits
-        self.random_str = ''.join(random.choice(letters) for i in range(length))
-        self.print("Random string for this run: {}".format(self.random_str),thr=0)
-        return self.random_str
+        self.config.random_str = ''.join(random.choice(letters) for i in range(length))
+        self.print("Random string for this run: {}".format(self.config.random_str),thr=0)
+        return self.config.random_str
 
 
     def print_info(self, params):
@@ -181,8 +176,10 @@ class General(object):
                 import cupy as cp
                 cp.random.seed(seed)
             elif lib =="tensorflow":
+                import tensorflow as tf
                 tf.random.set_seed(seed)
             elif lib == "sionna":
+                import sionna
                 sionna.phy.config.seed = seed
             else:
                 self.print(f"Library '{lib}' not recognized. Seed not set.", thr=1)
@@ -249,8 +246,6 @@ class General(object):
         return changed
 
 
-
-
     # Convert .py to .ipynb
     def convert_file_format(self, file_1_path, file_2_path):
         """
@@ -272,264 +267,6 @@ class General(object):
         with open(file_2_path, 'w') as file:
             nbformat.write(notebook, file)
         self.print(f"Converted {file_1_path} to {file_2_path}.", thr=3)
-
-
-    def init_device_torch(self):
-        """
-        Initializes the PyTorch device for the current instance.
-        This method sets the `device` attribute to 'cuda' if a GPU is available,
-        otherwise it sets it to 'cpu'. It also prints the selected device.
-        Returns:
-            None
-        """
-
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.print('Torch device: {}'.format(self.device),thr=0)
-
-
-    def cupy_plt_plot(self, *args, **kwargs):
-        """
-        Plots data using Matplotlib after transferring CuPy arrays to NumPy arrays.
-        This method takes any number of positional and keyword arguments, transfers
-        the first two positional arguments from CuPy arrays to NumPy arrays, and then
-        plots them using Matplotlib's `plot` function.
-        Parameters:
-        *args: list
-            Positional arguments to be passed to Matplotlib's `plot` function. The first
-            two arguments, if present, are expected to be CuPy arrays and will be transferred
-            to NumPy arrays.
-        **kwargs: dict
-            Keyword arguments to be passed to Matplotlib's `plot` function.
-        Returns:
-        None
-        """
-
-        args = list(args)
-
-        # Apply np.sqrt to the first two arguments
-        if len(args) > 0:
-            args[0] = self.numpy_transfer(args[0], dst='numpy')
-        if len(args) > 1:
-            args[1] = self.numpy_transfer(args[1], dst='numpy')
-
-        plt.plot(*args, **kwargs)
-        # plt.show()
-
-
-    def cupy_gpu_init(self):
-        """
-        Initializes GPU settings using CuPy if enabled.
-        This method performs the following steps:
-        1. Checks GPU usage.
-        2. Prints GPU memory status.
-        3. Warms up the GPU.
-        4. Compares GPU and CPU performance.
-        Preconditions:
-        - `self.use_cupy` must be True to enable CuPy usage.
-        - `self.import_cupy` must be True to allow CuPy import.
-        Raises:
-        - RuntimeError: If GPU initialization fails at any step.
-        """
-
-        if self.use_cupy and self.import_cupy:
-            self.check_gpu_usage()
-            self.print_gpu_memory()
-            self.warm_up_gpu()
-            self.gpu_cpu_compare()
-
-
-    def check_cupy_gpu(self, gpu_id=0):
-        """
-        Checks if CuPy is installed and if a specified GPU is available.
-        This method attempts to import CuPy and check for the availability of a GPU with the given ID.
-        It prints the CuPy version, the number of GPUs available, and the properties of the specified GPU.
-        Args:
-            gpu_id (int): The ID of the GPU to check. Default is 0.
-        Returns:
-            bool: True if CuPy is installed and the specified GPU is available, False otherwise.
-        """
-
-        if not self.import_cupy:
-            return False
-        try:
-            import cupy as cp
-            # Check if CuPy is installed
-            self.print("CuPy version: {}".format(cp.__version__),thr=0)
-
-            num_gpus = cp.cuda.runtime.getDeviceCount()
-            self.print(f"Number of GPUs available: {num_gpus}",thr=0)
-
-            # Check if the GPU is available
-            cp.cuda.Device(gpu_id).compute_capability
-            self.print("GPU {} is available".format(gpu_id),thr=0)
-
-            self.print('GPU {} properties: {}'.format(gpu_id, cp.cuda.runtime.getDeviceProperties(gpu_id)),thr=0)
-            return True
-        except ImportError:
-            self.print("CuPy is not installed.",thr=0)
-        except:
-            self.print("GPU is not available or CUDA is not installed correctly.",thr=0)
-        return False
-
-
-    def get_gpu_device(self):
-        """
-        Get the GPU device.
-        This method returns the GPU device if the use of CuPy is enabled. 
-        If CuPy is not enabled, it returns None.
-        Returns:
-            cp.cuda.Device or None: The GPU device if CuPy is enabled, otherwise None.
-        """
-        
-        if self.use_cupy:
-            import cupy as cp
-            return cp.cuda.Device(self.gpu_id)
-        else:
-            return None
-
-
-    def check_gpu_usage(self):
-        """
-        Check and print the current GPU usage.
-        This method uses the CuPy library to access the GPU device specified by
-        `self.gpu_id` and prints the current device information.
-        Returns:
-            None
-        """
-
-        import cupy as cp
-        with cp.cuda.Device(self.gpu_id) as device:
-            self.print(f"Current device: {device}",0)
-
-
-    def print_gpu_memory(self):
-        """
-        Prints the used and total GPU memory for the specified GPU device.
-        This method uses CuPy to access the GPU memory pool and prints the
-        used and total memory in bytes for the GPU device specified by
-        `self.gpu_id`.
-        Requires:
-            - CuPy library installed.
-            - `self.gpu_id` to be set to a valid GPU device ID.
-        Prints:
-            - Used GPU memory in bytes.
-            - Total GPU memory in bytes.
-        """
-
-        import cupy as cp
-        with cp.cuda.Device(self.gpu_id):
-            mempool = cp.get_default_memory_pool()
-            self.print("Used GPU memory: {} bytes".format(mempool.used_bytes()),thr=0)
-            self.print("Total GPU memory: {} bytes".format(mempool.total_bytes()),thr=0)
-
-
-    # Initialize and warm-up
-    def warm_up_gpu(self):
-        """
-        Warm up the GPU by performing a series of operations.
-        This method initializes the GPU by performing several operations using the CuPy library.
-        It creates arrays, performs matrix multiplications, and synchronizes the GPU stream to 
-        ensure that the GPU is ready for subsequent computations. The time taken for the warmup 
-        process is printed.
-        Returns:
-            None
-        """
-
-        self.print('Starting GPU warmup.', thr=0)
-        import cupy as cp
-        with cp.cuda.Device(self.gpu_id):
-            start = time.time()
-            _ = cp.array([1, 2, 3])
-            _ = cp.array([4, 5, 6])
-            a = cp.random.rand(1000, 1000)
-            _ = cp.dot(cp.array([[1, 2], [3, 4]]), cp.array([[5, 6], [7, 8]]))
-            _ = cp.dot(a, a)
-            cp.cuda.Stream.null.synchronize()
-            end = time.time()
-        self.print("GPU warmup time: {}".format(end-start),thr=0)
-
-
-    # Perform computation
-    def gpu_cpu_compare(self, size=20000):
-        """
-        Compares the computation time of matrix multiplication on CPU and GPU.
-        This method generates two random matrices of the specified size, performs
-        matrix multiplication on both CPU and GPU, and measures the time taken for
-        each operation. The results are printed and returned.
-        Parameters:
-        size (int): The size of the generated square matrices. Default is 20000.
-        Returns:
-        tuple: A tuple containing the GPU computation time and CPU computation time.
-        """
-
-        self.print('Starting CPU and GPU times compare.', thr=0)
-        import cupy as cp
-        # Generate data
-        a_cpu = numpy.random.rand(size, size).astype(float)
-        b_cpu = numpy.random.rand(size, size).astype(float)
-
-        # Measure CPU time for comparison
-        start = time.time()
-        result_cpu = numpy.dot(a_cpu, b_cpu)
-        end = time.time()
-        cpu_time = end - start
-        self.print("CPU time: {}".format(cpu_time),thr=0)
-
-        with cp.cuda.Device(self.gpu_id):
-            # Transfer data to GPU
-            a_gpu = cp.asarray(a_cpu)
-            b_gpu = cp.asarray(b_cpu)
-
-            # Measure GPU time
-            start = time.time()
-            result_gpu = cp.dot(a_gpu, b_gpu)
-            cp.cuda.Stream.null.synchronize()  # Ensure all computations are finished
-            end = time.time()
-            gpu_time = end - start
-            self.print("GPU time: {}".format(gpu_time), thr=0)
-
-        return gpu_time, cpu_time
-
-
-    def numpy_transfer(self, arrays, dst='numpy'):
-        """
-        Transfers arrays between NumPy and CuPy contexts.
-        Parameters:
-        -----------
-        arrays : list or array-like
-            The input arrays to be transferred. Can be a list of arrays or a single array.
-        dst : str, optional
-            The destination context for the arrays. Can be 'numpy' to transfer to NumPy arrays
-            or 'context' to transfer to CuPy arrays. Default is 'numpy'.
-        Returns:
-        --------
-        out : list or array-like
-            The transferred arrays in the specified destination context. If the input was a list,
-            the output will be a list of arrays. If the input was a single array, the output will
-            be a single array.
-        Notes:
-        ------
-        - If `self.import_cupy` is False, the input arrays are returned as-is without any transfer.
-        - If `dst` is 'numpy' and the input arrays are not NumPy arrays, they are converted to NumPy arrays.
-        - If `dst` is 'context' and the input arrays are not CuPy arrays, they are converted to CuPy arrays.
-        """
-
-        if self.import_cupy:
-            if isinstance(arrays, list):
-                out = []
-                for i in range(len(arrays)):
-                    if dst == 'numpy' and not isinstance(arrays[i], numpy.ndarray):
-                        out.append(np.asnumpy(arrays[i]))
-                    elif dst == 'context' and not isinstance(arrays[i], np.ndarray):
-                        out.append(np.asarray(arrays[i]))
-            else:
-                if dst=='numpy' and not isinstance(arrays, numpy.ndarray):
-                    out = np.asnumpy(arrays)
-                elif dst=='context' and not isinstance(arrays, np.ndarray):
-                    out = np.asarray(arrays)
-        else:
-            out = arrays
-        return out
 
 
     def unique_list(self, input_list):
@@ -587,7 +324,6 @@ class General(object):
             json_dict_updated = json_dict
 
         return json_dict_updated
-        
 
 
     def save_class_attributes_to_json(self, obj, file_path):
@@ -661,5 +397,283 @@ class General(object):
 
         return changed_files
 
+
+
+
+@dataclass
+class GeneralParallelConfig(GeneralConfig):
+    import_cupy: bool = False
+    use_cupy: bool = False
+    gpu_id: int = 0
+    use_torch: bool = False
+
+class GeneralParallel(General):
+
+    def __init__(self, config: GeneralParallelConfig, **overrides):
+        # strict override: only allow existing fields
+        super().__init__(config, **overrides)
+        
+        if self.config.use_torch:
+            self.init_device_torch()
+        else:
+            self.device = None
+    
+
+    def init_device_torch(self):
+        """
+        Initializes the PyTorch device for the current instance.
+        This method sets the `device` attribute to 'cuda' if a GPU is available,
+        otherwise it sets it to 'cpu'. It also prints the selected device.
+        Returns:
+            None
+        """
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.print('Torch device: {}'.format(self.device),thr=0)
+
+
+    def cupy_plt_plot(self, *args, **kwargs):
+        """
+        Plots data using Matplotlib after transferring CuPy arrays to NumPy arrays.
+        This method takes any number of positional and keyword arguments, transfers
+        the first two positional arguments from CuPy arrays to NumPy arrays, and then
+        plots them using Matplotlib's `plot` function.
+        Parameters:
+        *args: list
+            Positional arguments to be passed to Matplotlib's `plot` function. The first
+            two arguments, if present, are expected to be CuPy arrays and will be transferred
+            to NumPy arrays.
+        **kwargs: dict
+            Keyword arguments to be passed to Matplotlib's `plot` function.
+        Returns:
+        None
+        """
+
+        args = list(args)
+
+        # Apply np.sqrt to the first two arguments
+        if len(args) > 0:
+            args[0] = self.numpy_transfer(args[0], dst='numpy')
+        if len(args) > 1:
+            args[1] = self.numpy_transfer(args[1], dst='numpy')
+
+        plt.plot(*args, **kwargs)
+        # plt.show()
+
+
+    def cupy_gpu_init(self):
+        """
+        Initializes GPU settings using CuPy if enabled.
+        This method performs the following steps:
+        1. Checks GPU usage.
+        2. Prints GPU memory status.
+        3. Warms up the GPU.
+        4. Compares GPU and CPU performance.
+        Preconditions:
+        - `self.config.use_cupy` must be True to enable CuPy usage.
+        - `self.config.import_cupy` must be True to allow CuPy import.
+        Raises:
+        - RuntimeError: If GPU initialization fails at any step.
+        """
+
+        if self.config.use_cupy and self.config.import_cupy:
+            self.check_gpu_usage()
+            self.print_gpu_memory()
+            self.warm_up_gpu()
+            self.gpu_cpu_compare()
+
+
+    def check_cupy_gpu(self, gpu_id=0):
+        """
+        Checks if CuPy is installed and if a specified GPU is available.
+        This method attempts to import CuPy and check for the availability of a GPU with the given ID.
+        It prints the CuPy version, the number of GPUs available, and the properties of the specified GPU.
+        Args:
+            gpu_id (int): The ID of the GPU to check. Default is 0.
+        Returns:
+            bool: True if CuPy is installed and the specified GPU is available, False otherwise.
+        """
+
+        if not self.config.import_cupy:
+            return False
+        try:
+            import cupy as cp
+            # Check if CuPy is installed
+            self.print("CuPy version: {}".format(cp.__version__),thr=0)
+
+            num_gpus = cp.cuda.runtime.getDeviceCount()
+            self.print(f"Number of GPUs available: {num_gpus}",thr=0)
+
+            # Check if the GPU is available
+            cp.cuda.Device(gpu_id).compute_capability
+            self.print("GPU {} is available".format(gpu_id),thr=0)
+
+            self.print('GPU {} properties: {}'.format(gpu_id, cp.cuda.runtime.getDeviceProperties(gpu_id)),thr=0)
+            return True
+        except ImportError:
+            self.print("CuPy is not installed.",thr=0)
+        except:
+            self.print("GPU is not available or CUDA is not installed correctly.",thr=0)
+        return False
+
+
+    def get_gpu_device(self):
+        """
+        Get the GPU device.
+        This method returns the GPU device if the use of CuPy is enabled. 
+        If CuPy is not enabled, it returns None.
+        Returns:
+            cp.cuda.Device or None: The GPU device if CuPy is enabled, otherwise None.
+        """
+        
+        if self.config.use_cupy:
+            import cupy as cp
+            return cp.cuda.Device(self.config.gpu_id)
+        else:
+            return None
+
+
+    def check_gpu_usage(self):
+        """
+        Check and print the current GPU usage.
+        This method uses the CuPy library to access the GPU device specified by
+        `self.config.gpu_id` and prints the current device information.
+        Returns:
+            None
+        """
+
+        import cupy as cp
+        with cp.cuda.Device(self.config.gpu_id) as device:
+            self.print(f"Current device: {device}",0)
+
+
+    def print_gpu_memory(self):
+        """
+        Prints the used and total GPU memory for the specified GPU device.
+        This method uses CuPy to access the GPU memory pool and prints the
+        used and total memory in bytes for the GPU device specified by
+        `self.config.gpu_id`.
+        Requires:
+            - CuPy library installed.
+            - `self.config.gpu_id` to be set to a valid GPU device ID.
+        Prints:
+            - Used GPU memory in bytes.
+            - Total GPU memory in bytes.
+        """
+
+        import cupy as cp
+        with cp.cuda.Device(self.config.gpu_id):
+            mempool = cp.get_default_memory_pool()
+            self.print("Used GPU memory: {} bytes".format(mempool.used_bytes()),thr=0)
+            self.print("Total GPU memory: {} bytes".format(mempool.total_bytes()),thr=0)
+
+
+    # Initialize and warm-up
+    def warm_up_gpu(self):
+        """
+        Warm up the GPU by performing a series of operations.
+        This method initializes the GPU by performing several operations using the CuPy library.
+        It creates arrays, performs matrix multiplications, and synchronizes the GPU stream to 
+        ensure that the GPU is ready for subsequent computations. The time taken for the warmup 
+        process is printed.
+        Returns:
+            None
+        """
+
+        self.print('Starting GPU warmup.', thr=0)
+        import cupy as cp
+        with cp.cuda.Device(self.config.gpu_id):
+            start = time.time()
+            _ = cp.array([1, 2, 3])
+            _ = cp.array([4, 5, 6])
+            a = cp.random.rand(1000, 1000)
+            _ = cp.dot(cp.array([[1, 2], [3, 4]]), cp.array([[5, 6], [7, 8]]))
+            _ = cp.dot(a, a)
+            cp.cuda.Stream.null.synchronize()
+            end = time.time()
+        self.print("GPU warmup time: {}".format(end-start),thr=0)
+
+
+    # Perform computation
+    def gpu_cpu_compare(self, size=20000):
+        """
+        Compares the computation time of matrix multiplication on CPU and GPU.
+        This method generates two random matrices of the specified size, performs
+        matrix multiplication on both CPU and GPU, and measures the time taken for
+        each operation. The results are printed and returned.
+        Parameters:
+        size (int): The size of the generated square matrices. Default is 20000.
+        Returns:
+        tuple: A tuple containing the GPU computation time and CPU computation time.
+        """
+
+        self.print('Starting CPU and GPU times compare.', thr=0)
+        import cupy as cp
+        # Generate data
+        a_cpu = numpy.random.rand(size, size).astype(float)
+        b_cpu = numpy.random.rand(size, size).astype(float)
+
+        # Measure CPU time for comparison
+        start = time.time()
+        result_cpu = numpy.dot(a_cpu, b_cpu)
+        end = time.time()
+        cpu_time = end - start
+        self.print("CPU time: {}".format(cpu_time),thr=0)
+
+        with cp.cuda.Device(self.config.gpu_id):
+            # Transfer data to GPU
+            a_gpu = cp.asarray(a_cpu)
+            b_gpu = cp.asarray(b_cpu)
+
+            # Measure GPU time
+            start = time.time()
+            result_gpu = cp.dot(a_gpu, b_gpu)
+            cp.cuda.Stream.null.synchronize()  # Ensure all computations are finished
+            end = time.time()
+            gpu_time = end - start
+            self.print("GPU time: {}".format(gpu_time), thr=0)
+
+        return gpu_time, cpu_time
+
+
+    def numpy_transfer(self, arrays, dst='numpy'):
+        """
+        Transfers arrays between NumPy and CuPy contexts.
+        Parameters:
+        -----------
+        arrays : list or array-like
+            The input arrays to be transferred. Can be a list of arrays or a single array.
+        dst : str, optional
+            The destination context for the arrays. Can be 'numpy' to transfer to NumPy arrays
+            or 'context' to transfer to CuPy arrays. Default is 'numpy'.
+        Returns:
+        --------
+        out : list or array-like
+            The transferred arrays in the specified destination context. If the input was a list,
+            the output will be a list of arrays. If the input was a single array, the output will
+            be a single array.
+        Notes:
+        ------
+        - If `self.config.import_cupy` is False, the input arrays are returned as-is without any transfer.
+        - If `dst` is 'numpy' and the input arrays are not NumPy arrays, they are converted to NumPy arrays.
+        - If `dst` is 'context' and the input arrays are not CuPy arrays, they are converted to CuPy arrays.
+        """
+
+        if self.config.import_cupy:
+            if isinstance(arrays, list):
+                out = []
+                for i in range(len(arrays)):
+                    if dst == 'numpy' and not isinstance(arrays[i], numpy.ndarray):
+                        out.append(np.asnumpy(arrays[i]))
+                    elif dst == 'context' and not isinstance(arrays[i], np.ndarray):
+                        out.append(np.asarray(arrays[i]))
+            else:
+                if dst=='numpy' and not isinstance(arrays, numpy.ndarray):
+                    out = np.asnumpy(arrays)
+                elif dst=='context' and not isinstance(arrays, np.ndarray):
+                    out = np.asarray(arrays)
+        else:
+            out = arrays
+        return out
 
 
