@@ -14,6 +14,7 @@ from .signal_utils import Signal_Utils
 #             return func(*args, **kwargs)
 #     return wrapper
 
+# TODO add config class and transfer all parameters
 
 class Filter_Utils(Signal_Utils):
 

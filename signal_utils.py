@@ -11,77 +11,140 @@ try:
 except:
     pass
 
-from .general import General
+from .general import General, GeneralConfig
+from dataclasses import dataclass
 
+
+@dataclass
+class SignalUtilsConfig(GeneralConfig):
+    fc: float = None
+    fs: float = 1e9
+    fs_tx: float = None
+    fs_rx: float = None
+    fs_trx: float = None
+    n_samples: int = 1024
+    n_samples_tx: int = None
+    n_samples_rx: int = None
+    n_samples_trx: int = None
+    sc_range_ch: list = None
+    n_samples_ch: int = None
+    nfft: int = None
+    nfft_tx: int = None
+    nfft_rx: int = None
+    nfft_trx: int = None
+    nfft_ch: int = None
+    snr: float = None
+    sig_noise: float = None
+    sig_sel_id: int = None
+    rx_sel_id: int = None
+    N_r: int = None
+    N_sig: int = None
+    rand_params: dict = None
+    cf_range: list = None
+    psd_range: list = None
+    bw_range: list = None
+    spat_sig_range: list = None
+    az_range: list = None
+    el_range: list = None
+    aoa_mode: str = None
+    ant_dim: int = None
+    ant_dy: float = None
+    ant_dx: float = None
+    wl: float = None
+    steer_phi_rad: float = None
+    steer_theta_rad: float = None
+
+    n_sigs_max: int = None
+    size_sam_mode: str = None
+    snr_sam_mode: str = None
+    noise_power: float = None
+    mask_mode: str = None
+    eval_smooth: bool = None
+    seed: int = None
+    seed_list: list = None
+
+    t: np.ndarray = None
+    t_tx: np.ndarray = None
+    t_rx: np.ndarray = None
+    t_trx: np.ndarray = None
+    t_ch: np.ndarray = None
+    freq: np.ndarray = None
+    freq_tx: np.ndarray = None
+    freq_rx: np.ndarray = None
+    freq_trx: np.ndarray = None
+    freq_ch: np.ndarray = None
+    om: np.ndarray = None
+    om_tx: np.ndarray = None
+    om_rx: np.ndarray = None
+    om_trx: np.ndarray = None
+    om_ch: np.ndarray = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.fs_tx is None:
+            self.fs_tx = self.fs
+        if self.fs_rx is None:
+            self.fs_rx = self.fs
+        if self.fs_trx is None:
+            self.fs_trx = min(self.fs_tx, self.fs_rx)
+        if self.n_samples_tx is None:
+            self.n_samples_tx = self.n_samples
+        if self.n_samples_rx is None:
+            self.n_samples_rx = self.n_samples
+        if self.n_samples_trx is None:
+            self.n_samples_trx = min(self.n_samples_tx, self.n_samples_rx)
+        if self.sc_range_ch is None:
+            self.sc_range_ch = [-1*self.n_samples_trx//2, self.n_samples_trx//2-1]
+        if self.n_samples_ch is None:
+            self.n_samples_ch = self.sc_range_ch[1] - self.sc_range_ch[0] + 1
+        if self.nfft is None:
+            self.nfft = 2 ** np.ceil(np.log2(self.n_samples)).astype(int)
+        if self.nfft_tx is None:
+            self.nfft_tx = self.nfft
+        if self.nfft_rx is None:
+            self.nfft_rx = self.nfft
+        if self.nfft_trx is None:
+            self.nfft_trx = min(self.nfft_tx, self.nfft_rx)
+        if self.nfft_ch is None:
+            self.nfft_ch = self.n_samples_ch
+        if self.t is None:
+            self.t = np.arange(0, self.n_samples) / self.fs
+        if self.t_tx is None:
+            self.t_tx = np.arange(0, self.n_samples_tx) / self.fs_tx
+        if self.t_rx is None:
+            self.t_rx = np.arange(0, self.n_samples_rx) / self.fs_rx
+        if self.t_trx is None:
+            self.t_trx = np.arange(0, self.n_samples_trx) / self.fs_trx
+        if self.t_ch is None:
+            self.t_ch = np.arange(0, self.n_samples_ch) / self.fs_trx
+        if self.freq is None:
+            self.freq = np.linspace(-0.5, 0.5, self.nfft, endpoint=True) * self.fs
+        if self.freq_tx is None:
+            self.freq_tx = np.linspace(-0.5, 0.5, self.nfft_tx, endpoint=True) * self.fs_tx
+        if self.freq_rx is None:
+            self.freq_rx = np.linspace(-0.5, 0.5, self.nfft_rx, endpoint=True) * self.fs_rx
+        if self.freq_trx is None:
+            self.freq_trx = np.linspace(-0.5, 0.5, self.nfft_trx, endpoint=True) * self.fs_trx
+        if self.freq_ch is None:
+            self.freq_ch = self.freq_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)]
+        if self.om is None:
+            self.om = np.linspace(-np.pi, np.pi, self.nfft, endpoint=True)
+        if self.om_tx is None:
+            self.om_tx = np.linspace(-np.pi, np.pi, self.nfft_tx, endpoint=True)
+        if self.om_rx is None:
+            self.om_rx = np.linspace(-np.pi, np.pi, self.nfft_rx, endpoint=True)
+        if self.om_trx is None:
+            self.om_trx = np.linspace(-np.pi, np.pi, self.nfft_trx, endpoint=True)
+        if self.om_ch is None:
+            self.om_ch = self.om_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)]
 
 
 class Signal_Utils(General):
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, config: SignalUtilsConfig, **overrides):
+        super().__init__(config, **overrides)
         
-        self.fc=getattr(params, 'fc', None)
-        self.fs=getattr(params, 'fs', 1e9)
-        self.fs_tx=getattr(params, 'fs_tx', self.fs)
-        self.fs_rx=getattr(params, 'fs_rx', self.fs)
-        self.fs_trx=getattr(params, 'fs_trx', min(self.fs_tx, self.fs_rx))
-        self.n_samples=getattr(params, 'n_samples', 1024)
-        self.n_samples_tx=getattr(params, 'n_samples_tx', self.n_samples)
-        self.n_samples_rx=getattr(params, 'n_samples_rx', self.n_samples)
-        self.n_samples_trx=getattr(params, 'n_samples_trx', min(self.n_samples_tx, self.n_samples_rx))
-        self.sc_range_ch = getattr(params, 'sc_range_ch', [-1*self.n_samples_trx//2, self.n_samples_trx//2-1])
-        self.n_samples_ch=getattr(params, 'n_samples_ch', self.sc_range_ch[1] - self.sc_range_ch[0] + 1)
-        self.nfft = getattr(params, 'nfft', 2 ** np.ceil(np.log2(self.n_samples)).astype(int))
-        self.nfft_tx = getattr(params, 'nfft_tx', self.nfft)
-        self.nfft_rx = getattr(params, 'nfft_rx', self.nfft)
-        self.nfft_trx = getattr(params, 'nfft_trx', min(self.nfft_tx, self.nfft_rx))
-        self.nfft_ch = getattr(params, 'nfft_ch', self.n_samples_ch)
-        self.snr=getattr(params, 'snr', None)
-        self.sig_noise=getattr(params, 'sig_noise', None)
-        self.sig_sel_id=getattr(params, 'sig_sel_id', None)
-        self.rx_sel_id=getattr(params, 'rx_sel_id', None)
-        self.N_r=getattr(params, 'N_r', None)
-        self.N_sig=getattr(params, 'N_sig', None)
-        self.rand_params=getattr(params, 'rand_params', None)
-        self.cf_range=getattr(params, 'cf_range', None)
-        self.psd_range=getattr(params, 'psd_range', None)
-        self.bw_range=getattr(params, 'bw_range', None)
-        self.spat_sig_range=getattr(params, 'spat_sig_range', None)
-        self.az_range=getattr(params, 'az_range', None)
-        self.el_range=getattr(params, 'el_range', None)
-        self.aoa_mode=getattr(params, 'aoa_mode', None)
-        self.ant_dim=getattr(params, 'ant_dim', None)
-        self.ant_dy=getattr(params, 'ant_dy', None)
-        self.ant_dx=getattr(params, 'ant_dx', None)
-        self.wl=getattr(params, 'wl', None)
-        self.steer_phi_rad=getattr(params, 'steer_phi_rad', None)
-        self.steer_theta_rad=getattr(params, 'steer_theta_rad', None)
-
-        self.n_sigs_max = getattr(params, 'n_sigs_max', None)
-        self.size_sam_mode = getattr(params, 'size_sam_mode', None)
-        self.snr_sam_mode = getattr(params, 'snr_sam_mode', None)
-        self.noise_power = getattr(params, 'noise_power', None)
-        self.mask_mode = getattr(params, 'mask_mode', None)
-        self.eval_smooth = getattr(params, 'eval_smooth', None)
-        self.seed = getattr(params, 'seed', None)
-        self.seed_list = getattr(params, 'seed_list', None)
-
-        self.t = getattr(params, 't', np.arange(0, self.n_samples) / self.fs)
-        self.t_tx = getattr(params, 't_tx', np.arange(0, self.n_samples_tx) / self.fs_tx)
-        self.t_rx = getattr(params, 't_rx', np.arange(0, self.n_samples_rx) / self.fs_rx)
-        self.t_trx = getattr(params, 't_trx', np.arange(0, self.n_samples_trx) / self.fs_trx)
-        self.t_ch = getattr(params, 't_ch', np.arange(0, self.n_samples_ch) / self.fs_trx)
-        self.freq = getattr(params, 'freq', np.linspace(-0.5, 0.5, self.nfft, endpoint=True) * self.fs)
-        self.freq_tx = getattr(params, 'freq_tx', np.linspace(-0.5, 0.5, self.nfft_tx, endpoint=True) * self.fs_tx)
-        self.freq_rx = getattr(params, 'freq_rx', np.linspace(-0.5, 0.5, self.nfft_rx, endpoint=True) * self.fs_rx)
-        self.freq_trx = getattr(params, 'freq_trx', np.linspace(-0.5, 0.5, self.nfft_trx, endpoint=True) * self.fs_trx)
-        self.freq_ch = getattr(params, 'freq_ch', self.freq_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)])
-        self.om = getattr(params, 'om', np.linspace(-np.pi, np.pi, self.nfft, endpoint=True))
-        self.om_tx = getattr(params, 'om_tx', np.linspace(-np.pi, np.pi, self.nfft_tx, endpoint=True))
-        self.om_rx = getattr(params, 'om_rx', np.linspace(-np.pi, np.pi, self.nfft_rx, endpoint=True))
-        self.om_trx = getattr(params, 'om_trx', np.linspace(-np.pi, np.pi, self.nfft_trx, endpoint=True))
-        self.om_ch = getattr(params, 'om_ch', self.om_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)])
-
         self.kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
+
 
     def lin_to_db(self, x, mode='pow'):
         if mode=='pow':
@@ -164,9 +227,9 @@ class Signal_Utils(General):
 
     def psd(self, x, fs=None, nfft=None):
         if fs is None:
-            fs = self.fs
+            fs = self.config.fs
         if nfft is None:
-            nfft = self.nfft
+            nfft = self.config.nfft
         freq, psd = welch(x, fs, nperseg=nfft)
         return (freq, psd)
     
@@ -320,7 +383,8 @@ class Signal_Utils(General):
 
         return frac_delay
     
-    def calc_phase_offset(self, sig_1, sig_2, sc_range=[0, 0]):
+    @staticmethod
+    def calc_phase_offset(sig_1, sig_2, sc_range=[0, 0]):
         # Return the phase offset between two signals in radians
         corr = np.correlate(sig_1, sig_2)
         max_idx = np.argmax(corr)
@@ -380,21 +444,6 @@ class Signal_Utils(General):
         sig_1_f = np.exp(1j * omega * frac_delay) * sig_1_f
         sig_1_adj = ifft(ifftshift(sig_1_f), axis=-1)
 
-        # sig_1 = np.roll(sig_1, 1)
-        # frac_delay = 1-frac_delay
-
-        # sig_1_adj = resample(sig_1, int(n_samples * (1 + abs(frac_delay))))
-        # sig_1_adj =  sig_1_adj[:n_samples]  # Return signal with original length
-
-        # # Design FIR filter for fractional delay
-        # num_taps = 64
-        # h = firwin(num_taps, 0.5, window="hamming", scale=False)
-        # h = np.sinc(np.arange(-num_taps // 2, num_taps // 2) - frac_delay)
-        # h *= np.hamming(num_taps)  # Apply a window to the filter coefficients
-        # # Apply the filter to the signal
-        # sig_1_adj = lfilter(h, 1.0, sig_1)
-
-        # sig_1_adj = sig_1.copy()
         sig_2_adj = sig_2.copy()
 
         return sig_1_adj, sig_2_adj
@@ -408,7 +457,7 @@ class Signal_Utils(General):
                 az_range_t = az_range[1]-az_range[0]
                 az = np.linspace(az_range[0], az_range[1]-az_range_t/N_sig, N_sig)
             spatial_sig = np.exp(
-                2 * np.pi * 1j * self.ant_dx / self.wl * np.arange(N_r).reshape((N_r, 1)) * np.sin(az.reshape((1, N_sig))))
+                2 * np.pi * 1j * self.config.ant_dx / self.config.wl * np.arange(N_r).reshape((N_r, 1)) * np.sin(az.reshape((1, N_sig))))
             return spatial_sig, [az]
         elif ant_dim == 2:
             spatial_sig = np.zeros((N_r, N_sig)).astype(complex)
@@ -420,12 +469,12 @@ class Signal_Utils(General):
                 el_range_t = el_range[1] - el_range[0]
                 az = np.linspace(az_range[0], az_range[1]-az_range_t/N_sig, N_sig)
                 el = np.linspace(el_range[0], el_range[1]-el_range_t/N_sig, N_sig)
-            k = 2 * np.pi / self.wl
+            k = 2 * np.pi / self.config.wl
             M = np.sqrt(N_r)
             N = np.sqrt(N_r)
             for i in range(N_sig):
-                ax = np.exp(1j * k * self.ant_dx * np.arange(M) * np.sin(el[i]) * np.cos(az[i]))
-                ay = np.exp(1j * k * self.ant_dy * np.arange(N) * np.sin(el[i]) * np.sin(az[i]))
+                ax = np.exp(1j * k * self.config.ant_dx * np.arange(M) * np.sin(el[i]) * np.cos(az[i]))
+                ay = np.exp(1j * k * self.config.ant_dy * np.arange(N) * np.sin(el[i]) * np.sin(az[i]))
                 spatial_sig[:, i] = np.kron(ax, ay)
             return spatial_sig, [az,el]
 
@@ -433,25 +482,20 @@ class Signal_Utils(General):
     def gen_rand_params(self):
         self.print('Generating a set of random parameters.', 2)
 
-        if self.rand_params:
-            sig_bw = uniform(self.bw_range[0], self.bw_range[1], self.N_sig)
-            psd_range = self.psd_range/1e3/1e6
-            sig_psd = uniform(psd_range[0], psd_range[1], self.N_sig)
-            sig_cf = uniform(self.cf_range[0], self.cf_range[1], self.N_sig)
+        if self.config.rand_params:
+            sig_bw = uniform(self.config.bw_range[0], self.config.bw_range[1], self.config.N_sig)
+            psd_range = self.config.psd_range/1e3/1e6
+            sig_psd = uniform(psd_range[0], psd_range[1], self.config.N_sig)
+            sig_cf = uniform(self.config.cf_range[0], self.config.cf_range[1], self.config.N_sig)
 
-            # spatial_sig = uniform(self.spat_sig_range[0], self.spat_sig_range[1], (self.N_r, self.N_sig))
-            # spat_sig_mag = uniform(self.spat_sig_range[0], self.spat_sig_range[1], (self.N_r, self.N_sig))
-            # spat_sig_ang = uniform(0, 2 * np.pi, (self.N_r, self.N_sig))
-            # spatial_sig = spat_sig_mag * np.cos(spat_sig_ang) + 1j * spat_sig_mag * np.sin(spat_sig_ang)
-
-            spat_sig_mag = uniform(self.spat_sig_range[0], self.spat_sig_range[1], (1, self.N_sig))
-            spat_sig_mag = np.tile(spat_sig_mag, (self.N_r, 1))
-            spatial_sig, aoa = self.gen_spatial_sig(ant_dim=self.ant_dim, N_sig=self.N_sig, N_r=self.N_r, az_range=self.az_range, el_range=self.el_range, mode=self.aoa_mode)
+            spat_sig_mag = uniform(self.config.spat_sig_range[0], self.config.spat_sig_range[1], (1, self.config.N_sig))
+            spat_sig_mag = np.tile(spat_sig_mag, (self.config.N_r, 1))
+            spatial_sig, aoa = self.gen_spatial_sig(ant_dim=self.config.ant_dim, N_sig=self.config.N_sig, N_r=self.config.N_r, az_range=self.config.az_range, el_range=self.config.el_range, mode=self.config.aoa_mode)
             spatial_sig = spat_sig_mag * spatial_sig
 
         else:
-            self.N_sig = 8
-            self.N_r = 4
+            self.config.N_sig = 8
+            self.config.N_r = 4
             sig_bw = np.array([23412323.42206957, 29720830.74807138, 28854411.42943605,
                                13436699.17479161, 32625455.26622169, 32053137.51678639,
                                35113044.93237082, 21712944.94126201])
@@ -482,21 +526,21 @@ class Signal_Utils(General):
         sig_psd = sig_psd.astype(complex)
         spatial_sig = spatial_sig.astype(complex)
 
-        self.sig_bw = sig_bw
-        self.sig_psd = sig_psd
-        self.sig_cf = sig_cf
-        self.spatial_sig = spatial_sig
-        self.aoa = aoa
+        self.config.sig_bw = sig_bw
+        self.config.sig_psd = sig_psd
+        self.config.sig_cf = sig_cf
+        self.config.spatial_sig = spatial_sig
+        self.config.aoa = aoa
 
         return (sig_bw, sig_psd, sig_cf, spatial_sig, aoa)
 
 
     def gen_noise(self, mode='complex'):
         if mode=='real':
-            noise = randn(self.n_samples).astype(complex)           # Generate noise with PSD=1/fs W/Hz
-            # noise = normal(loc=0, scale=1, size=self.n_samples).astype(complex)
+            noise = randn(self.config.n_samples).astype(complex)           # Generate noise with PSD=1/fs W/Hz
+            # noise = normal(loc=0, scale=1, size=self.config.n_samples).astype(complex)
         elif mode=='complex':
-            noise = (randn(self.n_samples) + 1j*randn(self.n_samples)).astype(complex)           # Generate noise with PSD=2/fs W/Hz
+            noise = (randn(self.config.n_samples) + 1j*randn(self.config.n_samples)).astype(complex)           # Generate noise with PSD=2/fs W/Hz
 
         return noise
 
@@ -504,40 +548,38 @@ class Signal_Utils(General):
     def generate_signals(self, sig_bw, sig_psd, sig_cf, spatial_sig):
         self.print('Generating a set of signals and a rx signal.',2)
 
-        rx = np.zeros((self.N_r, self.n_samples), dtype=complex)
-        sigs = np.zeros((self.N_sig, self.n_samples), dtype=complex)
+        rx = np.zeros((self.config.N_r, self.config.n_samples), dtype=complex)
+        sigs = np.zeros((self.config.N_sig, self.config.n_samples), dtype=complex)
 
-        for i in range(self.N_sig):
-            fil_sig = firwin(1001, sig_bw[i] / self.fs)
+        for i in range(self.config.N_sig):
+            fil_sig = firwin(1001, sig_bw[i] / self.config.fs)
             # sigs[i, :] = np.exp(2 * np.pi * 1j * sig_cf[i] * t) * sig_psd[i] * np.convolve(noise, fil_sig, mode='same')
-            sigs[i, :] = np.exp(2 * np.pi * 1j * sig_cf[i] * self.t) * np.sqrt(
-                sig_psd[i]*self.fs/2) * lfilter(fil_sig, np.array([1]), self.gen_noise(mode='complex'))
+            sigs[i, :] = np.exp(2 * np.pi * 1j * sig_cf[i] * self.config.t) * np.sqrt(
+                sig_psd[i]*self.config.fs/2) * lfilter(fil_sig, np.array([1]), self.gen_noise(mode='complex'))
             rx += np.outer(spatial_sig[:, i], sigs[i, :])
 
-            if self.sig_noise:
+            if self.config.sig_noise:
                 yvar = np.mean(np.abs(sigs[i, :]) ** 2)
-                wvar = yvar / self.snr
+                wvar = yvar / self.config.config.snr
                 sigs[i, :] += np.sqrt(wvar / 2) * self.gen_noise(mode='complex')
 
         yvar = np.mean(np.abs(rx) ** 2, axis=1)
-        wvar = yvar / self.snr
-        self.noise_psd = np.mean(wvar/self.fs).astype(complex)
-        # noise_rx = np.sqrt(wvar[:, None] / 2) * noise
-        # noise_rx = np.outer(np.sqrt(wvar / 2), self.gen_noise(mode='complex'))
-        noise_rx = np.array([self.gen_noise(mode='complex') for _ in range(self.N_r)])
+        wvar = yvar / self.config.snr
+        self.noise_psd = np.mean(wvar/self.config.fs).astype(complex)
+        noise_rx = np.array([self.gen_noise(mode='complex') for _ in range(self.config.N_r)])
         noise_rx = np.sqrt(wvar[:, None] / 2) * noise_rx
         rx += noise_rx
 
-        if self.plot_level >= 2:
+        if self.config.plot_level >= 2:
             plt.figure()
             # plt.figure(figsize=(10,6))
             # plt.tight_layout()
             plt.subplots_adjust(wspace=0.5, hspace=1.0)
             plt.subplot(3, 1, 1)
-            for i in range(self.N_sig):
+            for i in range(self.config.N_sig):
                 spectrum = fftshift(fft(sigs[i, :]))
                 spectrum = self.lin_to_db(np.abs(spectrum), mode='mag')
-                plt.plot(self.freq, spectrum, color=rand(3), linewidth=0.5)
+                plt.plot(self.config.freq, spectrum, color=rand(3), linewidth=0.5)
             plt.title('Frequency spectrum of initial wideband signals')
             plt.xlabel('Frequency (Hz)')
             plt.ylabel('Magnitude (dB)')
@@ -545,31 +587,21 @@ class Signal_Utils(General):
             plt.subplot(3, 1, 2)
             spectrum = fftshift(fft(rx[self.rx_sel_id, :]))
             spectrum = self.lin_to_db(np.abs(spectrum), mode='mag')
-            plt.plot(self.freq, spectrum, 'b-', linewidth=0.5)
+            plt.plot(self.config.freq, spectrum, 'b-', linewidth=0.5)
             plt.title('Frequency spectrum of RX signal in a selected antenna')
             plt.xlabel('Frequency (Hz)')
             plt.ylabel('Magnitude (dB)')
 
             plt.subplot(3, 1, 3)
-            spectrum = fftshift(fft(sigs[self.sig_sel_id, :]))
+            spectrum = fftshift(fft(sigs[self.config.sig_sel_id, :]))
             spectrum = self.lin_to_db(np.abs(spectrum), mode='mag')
-            plt.plot(self.freq, spectrum, 'r-', linewidth=0.5)
+            plt.plot(self.config.freq, spectrum, 'r-', linewidth=0.5)
             plt.title('Frequency spectrum of the desired wideband signal')
             plt.xlabel('Frequency (Hz)')
             plt.ylabel('Magnitude (dB)')
 
-            plt.savefig(os.path.join(self.figs_dir, 'tx_rx_sigs.pdf'), format='pdf')
+            plt.savefig(os.path.join(self.config.figs_dir, 'tx_rx_sigs.pdf'), format='pdf')
             # plt.show(block=False)
-
-            # frequencies, psd = welch(rx[0,:], self.fs, nperseg=1024)
-            # plt.figure(figsize=(10, 6))
-            # plt.semilogy(frequencies, psd)
-            # plt.title('Power Spectral Density (PSD) of Signal')
-            # plt.xlabel('Frequency (Hz)')
-            # plt.ylabel(r'PSD ($V^2$/Hz)')
-            # plt.grid(True)
-            # plt.show()
-            # raise InterruptedError("Plot interrupt")
 
         return (rx, sigs)
 
@@ -729,8 +761,8 @@ class Signal_Utils(General):
         for _ in range(n_dataset):
             n_sigs = np.random.choice(n_sigs_list, p=n_sigs_p_dist)
             # n_sigs = randint(n_sigs_min, n_sigs_max+1)
-            regions = self.generate_random_regions(shape=shape, n_regions=n_sigs, min_size=sig_size_min, max_size=sig_size_max, size_sam_mode=self.size_sam_mode)
-            (psd, mask) = self.generate_random_PSD(shape=shape, sig_regions=regions, n_sigs=n_sigs, n_sigs_max=n_sigs_max, sig_size_min=sig_size_min, sig_size_max=sig_size_max, noise_power=self.noise_power, snr_range=snr_range, size_sam_mode=self.size_sam_mode, snr_sam_mode=self.snr_sam_mode, mask_mode=mask_mode)
+            regions = self.generate_random_regions(shape=shape, n_regions=n_sigs, min_size=sig_size_min, max_size=sig_size_max, size_sam_mode=self.config.size_sam_mode)
+            (psd, mask) = self.generate_random_PSD(shape=shape, sig_regions=regions, n_sigs=n_sigs, n_sigs_max=n_sigs_max, sig_size_min=sig_size_min, sig_size_max=sig_size_max, noise_power=self.noise_power, snr_range=snr_range, size_sam_mode=self.config.size_sam_mode, snr_sam_mode=self.config.snr_sam_mode, mask_mode=mask_mode)
             data.append(psd)
             masks.append(mask)
             bbox = np.zeros((n_sigs_max, 2*len(shape)), dtype=float)
@@ -754,9 +786,9 @@ class Signal_Utils(General):
 
     def generate_tone(self, freq_mode='sc', sc=None, f=None, sig_mode='tone_2', gen_mode='fft'):
         if freq_mode=='sc':
-            f = sc*self.fs_tx/self.nfft_tx
+            f = sc*self.config.fs_tx/self.config.nfft_tx
         elif freq_mode=='freq':
-            sc = int(np.round((f)*self.nfft_tx/self.fs_tx))
+            sc = int(np.round((f)*self.config.nfft_tx/self.config.fs_tx))
         else:
             raise ValueError('Invalid frequency mode: ' + freq_mode)
 
@@ -769,12 +801,12 @@ class Signal_Utils(General):
                 tone_td = np.cos(wt)
 
         elif gen_mode == 'fft':
-            tone_fd = np.zeros((self.nfft_tx,), dtype='complex')
+            tone_fd = np.zeros((self.config.nfft_tx,), dtype='complex')
             if sig_mode=='tone_1':
-                tone_fd[(self.nfft_tx >> 1) + sc] = 1
+                tone_fd[(self.config.nfft_tx >> 1) + sc] = 1
             elif sig_mode=='tone_2':
-                tone_fd[(self.nfft_tx >> 1) + sc] = 1
-                tone_fd[(self.nfft_tx >> 1) - sc] = 1
+                tone_fd[(self.config.nfft_tx >> 1) + sc] = 1
+                tone_fd[(self.config.nfft_tx >> 1) - sc] = 1
             tone_fd = fftshift(tone_fd, axes=0)
 
             # Convert the waveform to time-domain
@@ -790,9 +822,9 @@ class Signal_Utils(General):
 
     def generate_wideband(self, bw_mode='sc', sc_range=None, bw_range=None, wb_null_sc=0, modulation='4qam', sig_mode='wideband', gen_mode='fft', seed=100):
         if bw_mode=='sc':
-            bw_range = [sc_range[0]*self.fs_tx/self.nfft_tx, sc_range[1]*self.fs_tx/self.nfft_tx]
+            bw_range = [sc_range[0]*self.config.fs_tx/self.config.nfft_tx, sc_range[1]*self.config.fs_tx/self.config.nfft_tx]
         elif bw_mode=='freq':
-            sc_range = [int(np.round(bw_range[0]*self.nfft_tx/self.fs_tx)), int(np.round(bw_range[1]*self.nfft_tx/self.fs_tx))]
+            sc_range = [int(np.round(bw_range[0]*self.config.nfft_tx/self.config.fs_tx)), int(np.round(bw_range[1]*self.config.nfft_tx/self.config.fs_tx))]
 
         np.random.seed(seed)
         if gen_mode == 'fft':
@@ -809,13 +841,13 @@ class Signal_Utils(General):
                 # raise ValueError('Invalid signal modulation: ' + modulation)
 
             # Create the wideband sequence in frequency-domain
-            wb_fd = np.zeros((self.nfft_tx,), dtype='complex')
+            wb_fd = np.zeros((self.config.nfft_tx,), dtype='complex')
             if len(sym)>0:
-                wb_fd[((self.nfft_tx >> 1) + sc_range[0]):((self.nfft_tx >> 1) + sc_range[1] + 1)] = np.random.choice(sym, len(range(sc_range[0], sc_range[1]+1)))
+                wb_fd[((self.config.nfft_tx >> 1) + sc_range[0]):((self.config.nfft_tx >> 1) + sc_range[1] + 1)] = np.random.choice(sym, len(range(sc_range[0], sc_range[1]+1)))
             else:
-                wb_fd[((self.nfft_tx >> 1) + sc_range[0]):((self.nfft_tx >> 1) + sc_range[1] + 1)] = 1
+                wb_fd[((self.config.nfft_tx >> 1) + sc_range[0]):((self.config.nfft_tx >> 1) + sc_range[1] + 1)] = 1
             if sig_mode=='wideband_null':
-                wb_fd[((self.nfft_tx >> 1) - wb_null_sc):((self.nfft_tx >> 1) + wb_null_sc + 1)] = 0
+                wb_fd[((self.config.nfft_tx >> 1) - wb_null_sc):((self.config.nfft_tx >> 1) + wb_null_sc + 1)] = 0
 
             wb_fd = ifftshift(wb_fd, axes=0)
 
@@ -824,25 +856,25 @@ class Signal_Utils(General):
 
         elif gen_mode == 'ZadoffChu':
             prime_nums = [1, 3, 5, 7, 11, 13, 17] #, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
-            cf = self.nfft_tx % 2
+            cf = self.config.nfft_tx % 2
             q = 0
             # q = 0.5
             # u = np.random.choice(prime_nums)
             u = 3
 
-            N = self.nfft_tx
-            # N = self.sc_range[1] - self.sc_range[0] + 1
+            N = self.config.nfft_tx
+            # N = self.config.sc_range[1] - self.config.sc_range[0] + 1
             n = np.arange(0, N)
             zc = np.exp(-1j * np.pi * u * n * (n + cf + 2*q) / N)
 
             wb_fd = zc.copy()
-            index_zeros = np.arange(self.sc_range[1], self.nfft_tx + self.sc_range[0])
+            index_zeros = np.arange(self.config.sc_range[1], self.config.nfft_tx + self.config.sc_range[0])
             wb_fd[index_zeros] = 0
             
             # wb_td = zc.copy()
             # wb_fd = fftshift(fft(wb_td, axis=0))
-            # wb_fd[:((self.nfft_tx >> 1) + sc_range[0])] = 0
-            # wb_fd[((self.nfft_tx >> 1) + sc_range[1] + 1):] = 0
+            # wb_fd[:((self.config.nfft_tx >> 1) + sc_range[0])] = 0
+            # wb_fd[((self.config.nfft_tx >> 1) + sc_range[1] + 1):] = 0
 
             # wb_fd = ifftshift(wb_fd, axes=0)
             wb_td = ifft(wb_fd, axis=0)
@@ -962,21 +994,21 @@ class Signal_Utils(General):
     def beam_form(self, sigs):
         sigs_bf = sigs.copy()
         n_sigs = sigs.shape[0]
-        if self.ant_dim == 1:
+        if self.config.ant_dim == 1:
             n_ant = n_sigs
-        elif self.ant_dim == 2:
+        elif self.config.ant_dim == 2:
             n_ant_x = int(np.sqrt(n_sigs))
             n_ant_y = int(np.sqrt(n_sigs))
 
         for i in range(n_sigs):
-            if self.ant_dim == 1:
-                phase_shift = 2 * np.pi * self.ant_dx * np.sin(self.steer_phi_rad) * i
+            if self.config.ant_dim == 1:
+                phase_shift = 2 * np.pi * self.config.ant_dx * np.sin(self.config.steer_phi_rad) * i
                 print('phase_shift: ', phase_shift)
-            elif self.ant_dim == 2:
+            elif self.config.ant_dim == 2:
                 m = i // n_ant_y
                 n = i % n_ant_y
-                phase_shift = 2 * np.pi * (m*self.ant_dx*np.sin(self.steer_theta_rad)*np.cos(self.steer_phi_rad) +\
-                                      n*self.ant_dy*np.sin(self.steer_theta_rad)*np.sin(self.steer_phi_rad))
+                phase_shift = 2 * np.pi * (m*self.config.ant_dx*np.sin(self.config.steer_theta_rad)*np.cos(self.config.steer_phi_rad) +\
+                                      n*self.config.ant_dy*np.sin(self.config.steer_theta_rad)*np.sin(self.config.steer_phi_rad))
             sigs_bf[i, :] = np.exp(1j * phase_shift) * sigs[i, :]
 
         return sigs_bf
@@ -992,12 +1024,12 @@ class Signal_Utils(General):
 
     def filter(self, sig, center_freq=0, cutoff=50e6, fil_order=1000, plot=False):
         self.print("Starting to filter the signal...", thr=2)
-        filter_fir = firwin(fil_order, cutoff / self.fs_rx)
-        filter_fir = self.freq_shift(filter_fir, shift=center_freq, fs=self.fs_rx)
+        filter_fir = firwin(fil_order, cutoff / self.config.fs_rx)
+        filter_fir = self.freq_shift(filter_fir, shift=center_freq, fs=self.config.fs_rx)
 
         if plot:
             plt.figure()
-            w, h = freqz(filter_fir, worN=self.om_rx)
+            w, h = freqz(filter_fir, worN=self.config.om_rx)
             plt.plot(w / np.pi, 20 * np.log10(np.abs(h)), linewidth=1.0)
             plt.title('Frequency response of the filter')
             plt.xlabel(r'Normalized Frequency ($\times \pi$ rad/sample)')
@@ -1040,7 +1072,7 @@ class Signal_Utils(General):
                     # Compute the correlation between the two halves
                     Corr = np.sum(rxtd[rx_ant_id, :N//2] * np.conj(rxtd[rx_ant_id, N//2:N]))
                     # Estimate the frequency offset
-                    coarse_cfo = -1 * np.angle(Corr) / (2 * np.pi * (N//2)) * (self.fs_rx)
+                    coarse_cfo = -1 * np.angle(Corr) / (2 * np.pi * (N//2)) * (self.config.fs_rx)
                     cfo_est[rx_ant_id] = coarse_cfo
 
                 elif mode == 'fine':
@@ -1060,7 +1092,7 @@ class Signal_Utils(General):
                     p = np.polyfit(N, phi, deg=1)
                     slope = p[0]             # Slope of the fitted line
                     # Estimate the frequency offset using the slope
-                    fine_cfo = (slope / (2 * np.pi))*(self.fs_rx)
+                    fine_cfo = (slope / (2 * np.pi))*(self.config.fs_rx)
                     cfo_est[rx_ant_id] = fine_cfo
 
                 else:
@@ -1077,10 +1109,10 @@ class Signal_Utils(General):
         rxfd = fft(rxtd, axis=-1)
         if mode == 'time':
             for i in range(n_rx_ant):
-                rxtd[i, :] = self.freq_shift(rxtd[i, :], shift=-1*cfo[i], fs=self.fs_rx)
+                rxtd[i, :] = self.freq_shift(rxtd[i, :], shift=-1*cfo[i], fs=self.config.fs_rx)
         elif mode == 'freq':
             for i in range(n_rx_ant):
-                rxfd[i, :] = self.freq_shift(rxfd[i, :], shift=-1*cfo[i], fs=self.fs_rx)
+                rxfd[i, :] = self.freq_shift(rxfd[i, :], shift=-1*cfo[i], fs=self.config.fs_rx)
             rxtd = ifft(rxfd, axis=-1)
         return rxtd
     
@@ -1193,9 +1225,9 @@ class Signal_Utils(General):
                 # Set the delays to test around the peak
                 idx = np.argmax(np.abs(h_tr))
 
-                dly_test = (idx + np.linspace(drange[0], drange[1],ndly))/self.fs_trx
+                dly_test = (idx + np.linspace(drange[0], drange[1],ndly))/self.config.fs_trx
                 # Create the basis vectors
-                freq = (np.arange(nfft)/nfft)*self.fs_trx + self.fc - self.fs_trx/2
+                freq = (np.arange(nfft)/nfft)*self.config.fs_trx + self.config.fc - self.config.fs_trx/2
                 B = G[:,irx,itx,None]*np.exp(-2*np.pi*1j*freq[:,None] * dly_test[None,:])
 
                 # Use OMP to find the sparse solution
@@ -1305,8 +1337,8 @@ class Signal_Utils(General):
         n_rx_ant = rxtd_s.shape[0]
         n_tx_ant = txtd.shape[0]
 
-        t_ch = self.t_trx[:n_samples_ch]
-        freq_ch = self.freq_trx[(sc_range_ch[0]+n_samples//2):(sc_range_ch[1]+n_samples//2+1)]
+        t_ch = self.config.t_trx[:n_samples_ch]
+        freq_ch = self.config.freq_trx[(sc_range_ch[0]+n_samples//2):(sc_range_ch[1]+n_samples//2+1)]
 
         H_est_full = np.zeros((n_rx_ant, n_tx_ant, n_samples_ch), dtype='complex')
         h_est_full = np.zeros((n_rx_ant, n_tx_ant, n_samples_ch), dtype='complex')
@@ -1365,60 +1397,6 @@ class Signal_Utils(General):
         H_est_max = H_est_full[:,:,idx_max]
 
         return h_est_full, H_est, H_est_max
-
-
-    # def channel_estimate_eq(self, txtd, rxtd):
-    #     txfd = fft(txtd)
-    #     rxfd = fft(rxtd)
-
-    #     # Signal parameters
-    #     N_cp = 256
-    #     N_fft = 768
-    #     M = 16
-    #     x = txtd[N_cp:]
-    #     X = fft(x)
-
-    #     plt.figure(1)
-    #     plt.subplot(3, 1, 1)
-
-    #     # Time synchronization
-    #     data_sync = rxtd[:4 * N_fft - 1]
-    #     rx = convolve(np.conj(x), data_sync, mode='full')
-    #     plt.plot(np.abs(rx))
-    #     index_ini = np.argmax(rx)
-
-    #     # Retrieve time-synced signal
-    #     N_vec = (np.tile(np.arange(N_fft), M) + np.repeat(np.arange(M), N_fft) * (N_fft + N_cp) + N_cp + 1)
-    #     Y = rxtd[N_vec + index_ini - 3].reshape((M, N_fft)).T
-
-    #     # Equalized frequency
-    #     H_hat = fft(Y, axis=0) / X[:,None]
-    #     # Averaged frequency
-    #     H_hat_avg = np.mean(H_hat, axis=1)
-
-    #     # Equalized time
-    #     h_hat = ifft(H_hat, axis=0)
-    #     h_hat = h_hat[:N_cp, :]
-
-    #     # Averaged time
-    #     h_hat_avg = np.mean(h_hat, axis=1)
-
-    #     # Plots
-    #     plt.subplot(3, 1, 2)
-    #     plt.plot(np.abs(h_hat_avg))
-
-    #     plt.subplot(3, 1, 3)
-    #     plt.plot(fftshift(10 * np.log10(np.abs(H_hat_avg) ** 2)))
-    #     plt.axis([1, N_fft, -100, 0])
-
-    #     H_dd = fft(h_hat.T, axis=0).T / np.sqrt(N_fft * M)
-    #     H_dd_log = 10 * np.log10(np.abs(H_dd) ** 2)
-    #     H_dd_log[H_dd_log < -130] = -130
-
-    #     plt.figure(2)
-    #     plt.pcolor(H_dd_log)
-    #     plt.colorbar()
-    #     plt.show()
 
 
     def channel_equalize(self, txtd, rxtd, h_full, H, sc_range=[0,0], sc_range_ch=[0,0], null_sc_range=[0,0], n_rx_ch_eq=1):
@@ -1531,7 +1509,7 @@ class Signal_Utils(General):
     def angle_of_arrival(self, txtd, rxtd, h_full, rx_phase_list, aoa_list, fc=1e9, rx_phase_offset=0, rx_delay_offset=0):
         if len(rxtd.shape) == 3:
             rxtd = np.mean(rxtd.copy(), axis=0)
-        rx_phase = self.calc_phase_offset(rxtd[0,:], rxtd[1,:])
+        rx_phase = Signal_Utils.calc_phase_offset(rxtd[0,:], rxtd[1,:])
 
         rx_phase = np.angle(np.exp(1j * rx_phase))
         rx_phase -= rx_phase_offset
@@ -1540,7 +1518,7 @@ class Signal_Utils(General):
         # Wrap phase between -pi and pi
         rx_phase = np.angle(np.exp(1j * rx_phase))
 
-        angle_sin = rx_phase/(2*np.pi*self.ant_dx)
+        angle_sin = rx_phase/(2*np.pi*self.config.ant_dx)
         if angle_sin > 1 or angle_sin < -1:
             # angle = np.nan
             aoa = None
@@ -1591,7 +1569,7 @@ class Signal_Utils(General):
             elif mode=='fft':
                 sig_plot = np.abs(fftshift(fft(sigs_dict[sig_name])))
             elif mode=='psd':
-                freq, sig_plot = welch(sigs_dict[sig_name], self.fs, nperseg=self.nfft)
+                freq, sig_plot = welch(sigs_dict[sig_name], self.config.fs, nperseg=self.config.nfft)
                 x = freq
             
             if scale=='dB10':

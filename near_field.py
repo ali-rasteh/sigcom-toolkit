@@ -11,6 +11,7 @@ except:
 from .signal_utils import Signal_Utils
 
 
+# TODO add config class and transfer all parameters
 
 class RoomModel(Signal_Utils):
     def __init__(self, xlim=np.array([-10,10]), ylim=np.array([-3,10])):
