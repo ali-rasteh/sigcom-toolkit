@@ -45,6 +45,15 @@ class GeneralConfig:
                     setattr(self, f.name, getattr(config, f.name))
         return self
 
+    def update_from_json(self, file_path):
+        """
+        Update all existing parameters of this config from a JSON file. Extra keys are ignored.
+        """
+        with open(file_path, 'r') as json_file:
+            json_dict = json.load(json_file)
+        return self.update_from_config(json_dict)
+
+
     def copy(self):
         return copy.deepcopy(self)
 
