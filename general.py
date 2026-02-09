@@ -45,6 +45,9 @@ class GeneralConfig:
                     setattr(self, f.name, getattr(config, f.name))
         return self
 
+    def copy(self):
+        return copy.deepcopy(self)
+
 
 class General(object):
     """
@@ -62,7 +65,7 @@ class General(object):
         self.config = replace(config, **overrides)  # makes a new config
 
 
-    def create_dirs(self):
+    def create_dirs(self, dir_list=[]):
         """
         Creates directories for figures, logs, and data if they do not exist.
         This method checks if the directories specified by `self.config.figs_dir`, `self.config.logs_dir`,
@@ -73,6 +76,8 @@ class General(object):
         os.makedirs(self.config.figs_dir, exist_ok=True)
         os.makedirs(self.config.logs_dir, exist_ok=True)
         os.makedirs(self.config.data_dir, exist_ok=True)
+        for d in dir_list:
+            os.makedirs(d, exist_ok=True)
         
         
     def copy(self):

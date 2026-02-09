@@ -47,12 +47,9 @@ class SignalUtilsConfig(GeneralConfig):
     az_range: list = None
     el_range: list = None
     aoa_mode: str = None
-    ant_dim: int = None
-    ant_dy: float = None
-    ant_dx: float = None
+    ant_d: list = None
     wl: float = None
-    steer_phi_rad: float = None
-    steer_theta_rad: float = None
+    steer_rad: list = None
 
     n_sigs_max: int = None
     size_sam_mode: str = None
@@ -81,12 +78,13 @@ class SignalUtilsConfig(GeneralConfig):
 
     def __post_init__(self):
         super().__post_init__()
+
         if self.fs_tx is None:
             self.fs_tx = self.fs
         if self.fs_rx is None:
             self.fs_rx = self.fs
         if self.fs_trx is None:
-            self.fs_trx = min(self.fs_tx, self.fs_rx)
+            self.fs_trx = self.fs
         if self.n_samples_tx is None:
             self.n_samples_tx = self.n_samples
         if self.n_samples_rx is None:
@@ -118,15 +116,15 @@ class SignalUtilsConfig(GeneralConfig):
         if self.t_ch is None:
             self.t_ch = np.arange(0, self.n_samples_ch) / self.fs_trx
         if self.freq is None:
-            self.freq = np.linspace(-0.5, 0.5, self.nfft, endpoint=True) * self.fs
+            self.freq = np.linspace(-0.5, 0.5, self.nfft, endpoint=True) * self.fs / 1e6
         if self.freq_tx is None:
-            self.freq_tx = np.linspace(-0.5, 0.5, self.nfft_tx, endpoint=True) * self.fs_tx
+            self.freq_tx = np.linspace(-0.5, 0.5, self.nfft_tx, endpoint=True) * self.fs_tx / 1e6
         if self.freq_rx is None:
-            self.freq_rx = np.linspace(-0.5, 0.5, self.nfft_rx, endpoint=True) * self.fs_rx
+            self.freq_rx = np.linspace(-0.5, 0.5, self.nfft_rx, endpoint=True) * self.fs_rx / 1e6
         if self.freq_trx is None:
-            self.freq_trx = np.linspace(-0.5, 0.5, self.nfft_trx, endpoint=True) * self.fs_trx
+            self.freq_trx = np.linspace(-0.5, 0.5, self.nfft_trx, endpoint=True) * self.fs_trx / 1e6
         if self.freq_ch is None:
-            self.freq_ch = self.freq_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)]
+            self.freq_ch = self.freq_trx[(self.sc_range_ch[0]+self.nfft_trx//2):(self.sc_range_ch[1]+self.nfft_trx//2+1)] / 1e6
         if self.om is None:
             self.om = np.linspace(-np.pi, np.pi, self.nfft, endpoint=True)
         if self.om_tx is None:
@@ -166,18 +164,20 @@ class Signal_Utils(General):
             # return (a + 180.0) % 360.0 - 180.0
             return np.rad2deg(np.angle(np.exp(1j * np.deg2rad(a))))
 
-    def aoa_to_phase(self, aoa, wl=0.01, ant_dim=1, ant_dx_m=0, ant_dy_m=0):
+    def aoa_to_phase(self, aoa, wl=0.01, ant_d_m=[0.0]):
+        ant_dim = len(ant_d_m)
         if ant_dim == 1:
-            phase = 2 * np.pi * ant_dx_m / wl * np.sin(aoa)
+            phase = 2 * np.pi * ant_d_m[0] / wl * np.sin(aoa)
         elif ant_dim == 2:
-            phase = 2 * np.pi * ant_dx_m / wl * np.sin(aoa[0]) + 2 * np.pi * ant_dy_m / wl * np.sin(aoa[1])
+            phase = 2 * np.pi * ant_d_m[0] / wl * np.sin(aoa[0]) + 2 * np.pi * ant_d_m[1] / wl * np.sin(aoa[1])
         return phase
 
-    def phase_to_aoa(self, phase, wl=0.01, ant_dim=1, ant_dx_m=0, ant_dy_m=0):
+    def phase_to_aoa(self, phase, wl=0.01, ant_d_m=[0.0]):
+        ant_dim = len(ant_d_m)
         if ant_dim == 1:
-            aoa = np.arcsin(phase * wl / (2 * np.pi * ant_dx_m))
+            aoa = np.arcsin(phase * wl / (2 * np.pi * ant_d_m[0]))
         elif ant_dim == 2:
-            aoa = np.array([np.arcsin(phase * wl / (2 * np.pi * ant_dx_m)), np.arcsin(phase * wl / (2 * np.pi * ant_dy_m))])
+            aoa = np.array([np.arcsin(phase * wl / (2 * np.pi * ant_d_m[0])), np.arcsin(phase * wl / (2 * np.pi * ant_d_m[1]))])
         return aoa
 
     def mse(self, x, y):
@@ -449,7 +449,8 @@ class Signal_Utils(General):
         return sig_1_adj, sig_2_adj
 
 
-    def gen_spatial_sig(self, ant_dim=1, N_sig=1, N_r=1, az_range=[-np.pi, np.pi], el_range=[-np.pi/2, np.pi/2], mode='uniform'):
+    def gen_spatial_sig(self, N_sig=1, N_r=1, az_range=[-np.pi, np.pi], el_range=[-np.pi/2, np.pi/2], mode='uniform'):
+        ant_dim = len(self.config.ant_d)
         if ant_dim == 1:
             if mode=='uniform':
                 az = uniform(az_range[0], az_range[1], N_sig)
@@ -457,7 +458,7 @@ class Signal_Utils(General):
                 az_range_t = az_range[1]-az_range[0]
                 az = np.linspace(az_range[0], az_range[1]-az_range_t/N_sig, N_sig)
             spatial_sig = np.exp(
-                2 * np.pi * 1j * self.config.ant_dx / self.config.wl * np.arange(N_r).reshape((N_r, 1)) * np.sin(az.reshape((1, N_sig))))
+                2 * np.pi * 1j * self.config.ant_d[0] / self.config.wl * np.arange(N_r).reshape((N_r, 1)) * np.sin(az.reshape((1, N_sig))))
             return spatial_sig, [az]
         elif ant_dim == 2:
             spatial_sig = np.zeros((N_r, N_sig)).astype(complex)
@@ -473,8 +474,8 @@ class Signal_Utils(General):
             M = np.sqrt(N_r)
             N = np.sqrt(N_r)
             for i in range(N_sig):
-                ax = np.exp(1j * k * self.config.ant_dx * np.arange(M) * np.sin(el[i]) * np.cos(az[i]))
-                ay = np.exp(1j * k * self.config.ant_dy * np.arange(N) * np.sin(el[i]) * np.sin(az[i]))
+                ax = np.exp(1j * k * self.config.ant_d[0] * np.arange(M) * np.sin(el[i]) * np.cos(az[i]))
+                ay = np.exp(1j * k * self.config.ant_d[1] * np.arange(N) * np.sin(el[i]) * np.sin(az[i]))
                 spatial_sig[:, i] = np.kron(ax, ay)
             return spatial_sig, [az,el]
 
@@ -490,7 +491,7 @@ class Signal_Utils(General):
 
             spat_sig_mag = uniform(self.config.spat_sig_range[0], self.config.spat_sig_range[1], (1, self.config.N_sig))
             spat_sig_mag = np.tile(spat_sig_mag, (self.config.N_r, 1))
-            spatial_sig, aoa = self.gen_spatial_sig(ant_dim=self.config.ant_dim, N_sig=self.config.N_sig, N_r=self.config.N_r, az_range=self.config.az_range, el_range=self.config.el_range, mode=self.config.aoa_mode)
+            spatial_sig, aoa = self.gen_spatial_sig(N_sig=self.config.N_sig, N_r=self.config.N_r, az_range=self.config.az_range, el_range=self.config.el_range, mode=self.config.aoa_mode)
             spatial_sig = spat_sig_mag * spatial_sig
 
         else:
@@ -994,21 +995,22 @@ class Signal_Utils(General):
     def beam_form(self, sigs):
         sigs_bf = sigs.copy()
         n_sigs = sigs.shape[0]
-        if self.config.ant_dim == 1:
+        ant_dim = len(self.config.ant_d)
+        if ant_dim == 1:
             n_ant = n_sigs
-        elif self.config.ant_dim == 2:
+        elif ant_dim == 2:
             n_ant_x = int(np.sqrt(n_sigs))
             n_ant_y = int(np.sqrt(n_sigs))
 
         for i in range(n_sigs):
-            if self.config.ant_dim == 1:
-                phase_shift = 2 * np.pi * self.config.ant_dx * np.sin(self.config.steer_phi_rad) * i
+            if ant_dim == 1:
+                phase_shift = 2 * np.pi * self.config.ant_d[0] * np.sin(self.config.steer_rad[0]) * i
                 print('phase_shift: ', phase_shift)
-            elif self.config.ant_dim == 2:
+            elif ant_dim == 2:
                 m = i // n_ant_y
                 n = i % n_ant_y
-                phase_shift = 2 * np.pi * (m*self.config.ant_dx*np.sin(self.config.steer_theta_rad)*np.cos(self.config.steer_phi_rad) +\
-                                      n*self.config.ant_dy*np.sin(self.config.steer_theta_rad)*np.sin(self.config.steer_phi_rad))
+                phase_shift = 2 * np.pi * (m*self.config.ant_d[0]*np.sin(self.config.steer_rad[1])*np.cos(self.config.steer_rad[0]) +\
+                                      n*self.config.ant_d[1]*np.sin(self.config.steer_rad[1])*np.sin(self.config.steer_rad[0]))
             sigs_bf[i, :] = np.exp(1j * phase_shift) * sigs[i, :]
 
         return sigs_bf
@@ -1518,7 +1520,7 @@ class Signal_Utils(General):
         # Wrap phase between -pi and pi
         rx_phase = np.angle(np.exp(1j * rx_phase))
 
-        angle_sin = rx_phase/(2*np.pi*self.config.ant_dx)
+        angle_sin = rx_phase/(2*np.pi*self.config.ant_d[0])
         if angle_sin > 1 or angle_sin < -1:
             # angle = np.nan
             aoa = None

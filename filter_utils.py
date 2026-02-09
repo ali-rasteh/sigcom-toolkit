@@ -18,8 +18,8 @@ from .signal_utils import Signal_Utils
 
 class Filter_Utils(Signal_Utils):
 
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, config):
+        super().__init__(config)
         
 
     def wiener_fir(self, input, output, filter_order_pos, filter_order_neg):

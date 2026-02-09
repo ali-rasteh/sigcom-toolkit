@@ -30,8 +30,8 @@ Here is an example of how to use the library:
 from .signal_utils import Signal_Utils
 
 # Example usage
-params = ...
-su_ins = Signal_Utils(params)
+config = ...
+su_ins = Signal_Utils(config)
 su_ins.some_function()
 ```
 

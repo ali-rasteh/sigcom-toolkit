@@ -833,29 +833,29 @@ if __name__ == '__main__':
 
 
 
-    from rfsoc_test import Params_Class
+    from configs import Configs_Class
     from signal_utilsrfsoc import Signal_Utils_Rfsoc
-    params = Params_Class()
-    params.channel_limit = False
-    params.sc_range_ch = [-1*params.nfft_trx//2, params.nfft_trx//2-1]
-    params.freq_hop_list = [fc]
-    params.fs = fsamp
-    params.fs_tx=params.fs
-    params.fs_rx=params.fs
-    params.fs_trx=params.fs
+    config = Configs_Class()
+    config.channel_limit = False
+    config.sc_range_ch = [-1*config.nfft_trx//2, config.nfft_trx//2-1]
+    config.freq_hop_list = [fc]
+    config.fs = fsamp
+    config.fs_tx=config.fs
+    config.fs_rx=config.fs
+    config.fs_trx=config.fs
 
-    params.nf_npath_max = npath_est
-    params.nf_rx_loc_sep = rxlocsep
-    params.nf_tx_ant_sep = 0.5
-    params.nf_rx_ant_sep = antsep
-    params.n_rx_ant = nantrx
+    config.nf_npath_max = npath_est
+    config.nf_rx_loc_sep = rxlocsep
+    config.nf_tx_ant_sep = 0.5
+    config.nf_rx_ant_sep = antsep
+    config.n_rx_ant = nantrx
 
     # Construct the room
     rm = RoomModel()
 
     # Place a source
     xsrc = np.array([6,4])
-    params.nf_tx_loc = xsrc
+    config.nf_tx_loc = xsrc
 
     # Find the reflections
     xref = rm.find_reflection(xsrc)
@@ -863,8 +863,8 @@ if __name__ == '__main__':
     # Create all the transmitters
     xtx =  np.vstack((xsrc, xref))
 
-    params.calc_params()
-    signals_inst = Signal_Utils_Rfsoc(params)
+    config.calc_params()
+    signals_inst = Signal_Utils_Rfsoc(config)
 
     # Create the simulation object and run the simulation
     sim = Sim(fc=fc, fsamp=fsamp, snr=snr, nantrx=nantrx,
@@ -895,7 +895,7 @@ if __name__ == '__main__':
     for i in range(h.shape[-1]):
         h_ = h[:,:,:,i].copy()
         h_ = np.expand_dims(h_, axis=3)
-        h_ = np.repeat(h_, params.n_rd_rep, axis=3)
+        h_ = np.repeat(h_, config.n_rd_rep, axis=3)
         ndly = 5000
         sparse_est_params = signals_inst.sparse_est(h=h_, g=None, sc_range_ch=signals_inst.sc_range_ch, npaths=signals_inst.nf_npath_max, nframe_avg=1, ndly=ndly, drange=signals_inst.sparse_ch_samp_range, cv=True, n_ignore=signals_inst.sparse_ch_n_ignore)
         (h_tr, dly_est, peaks, npath_est) = sparse_est_params
