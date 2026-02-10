@@ -8,12 +8,6 @@ from .signal_utils import Signal_Utils
 
 
 
-# def use_gpu_context(func):
-#     def wrapper(*args, **kwargs):
-#         with cp.cuda.Device(0):
-#             return func(*args, **kwargs)
-#     return wrapper
-
 # TODO add config class and transfer all parameters
 
 class Filter_Utils(Signal_Utils):
