@@ -833,7 +833,7 @@ if __name__ == '__main__':
 
 
 
-    from configs import Configs_Class
+    from sounder_configs import Configs_Class
     from signal_utilsrfsoc import Signal_Utils_Rfsoc
     config = Configs_Class()
     config.channel_limit = False
