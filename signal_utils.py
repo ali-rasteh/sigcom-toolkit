@@ -1,18 +1,89 @@
-import os
 import numpy as np
 from numpy.fft import fft, ifft, fftshift, ifftshift
 from numpy.random import randn, rand, randint, uniform, exponential
 from scipy import constants
 from scipy.signal import firwin, lfilter, freqz, welch
 import matplotlib.pyplot as plt
-from matplotlib.patches import Wedge, Circle, FancyArrow
-try:
-    import torch
-except:
-    pass
+from dataclasses import dataclass
 
 from .general import General, GeneralConfig
-from dataclasses import dataclass
+from .plot_utils import Plot_Utils, PlotUtilsConfig
+
+
+
+class AoAKalmanFilter:
+    """
+    Wrapped-angle Kalman filter with a persistent prior across windows.
+    State is [angle; angular_rate]. All internal math uses radians; inputs/outputs
+    to the public API are in degrees where noted.
+
+    Parameters
+    ----------
+    dt : float
+        Sampling period (in seconds) of the AoA measurements inside one fusion
+        window (e.g., 0.1 for 100 ms). This also sets the discrete-time model step.
+    sigma_meas_deg : float
+        Standard deviation of the AoA measurement noise in degrees.
+        Smaller -> the filter trusts measurements more; larger -> trusts the model more.
+    sigma_acc_deg : float, optional (default=0.3)
+        Standard deviation (in deg/s^2) of the angular acceleration driving
+        the process noise. Larger -> more responsive to rapid changes (less smooth);
+        smaller -> smoother output (more model-trusting).
+    init_angle_deg : float or None, optional
+        If provided, the filter is initialized with this AoA (in degrees).
+        If None, the first observed sample in `step()` will be used to initialize.
+
+    Notes
+    -----
+    - Angles are wrapped to (-pi, pi] internally to avoid discontinuities.
+    - The constant-velocity (angle-rate) model is used:
+        x_k = [ angle_k, angular_rate_k ]^T
+        x_{k+1} = F x_k + w_k,  z_k = H x_k + v_k
+      with F = [[1, dt], [0, 1]], H = [[1, 0]].
+    """
+
+    def __init__(self, dt, sigma_meas_deg, sigma_acc_deg=0.3, init_angle_deg=None):
+        self.dt = float(dt)
+        self.sigma_meas = float(np.deg2rad(sigma_meas_deg))
+        self.sigma_acc = float(np.deg2rad(sigma_acc_deg))
+        self.F = np.array([[1.0, self.dt],[0.0, 1.0]])
+        self.H = np.array([[1.0, 0.0]])
+        self.Q = self.sigma_acc**2 * np.array([[self.dt**3/3.0, self.dt**2/2.0],
+                                               [self.dt**2/2.0, self.dt]])
+        self.R = self.sigma_meas**2
+        self.P = np.diag([np.deg2rad(30.0)**2, np.deg2rad(2.0)**2])
+        self.initialized = False
+        self.x = None
+        if init_angle_deg is not None:
+            self.reset(init_angle_deg)
+    
+    def wrap_angle_rad(self, a):
+        return (a + np.pi) % (2*np.pi) - np.pi
+
+    def wrap_angle_deg(self, a):
+        return (a + 180.0) % 360.0 - 180.0
+
+    def reset(self, init_angle_deg):
+        self.x = np.array([np.deg2rad(init_angle_deg), 0.0])
+        self.x[0] = self.wrap_angle_rad(self.x[0])
+        self.P = np.diag([np.deg2rad(30.0)**2, np.deg2rad(2.0)**2])
+        self.initialized = True
+
+    def step(self, angles_deg_1s):
+        z_list = np.deg2rad(np.asarray(angles_deg_1s, dtype=float))
+        if not self.initialized:
+            self.reset(np.rad2deg(z_list[0]))
+        for z in z_list:
+            self.x = self.F @ self.x
+            self.P = self.F @ self.P @ self.F.T + self.Q
+            innov = self.wrap_angle_rad(z - (self.H @ self.x)[0])
+            S = (self.H @ self.P @ self.H.T)[0, 0] + self.R
+            K = (self.P @ self.H.T)[:, 0] / S
+            self.x = self.x + K * innov
+            self.P = (np.eye(2) - K[:, None] @ self.H) @ self.P
+            self.x[0] = self.wrap_angle_rad(self.x[0])
+        return float(np.rad2deg(self.x[0]))
+
 
 
 @dataclass
@@ -33,32 +104,10 @@ class SignalUtilsConfig(GeneralConfig):
     nfft_rx: int = None
     nfft_trx: int = None
     nfft_ch: int = None
-    snr: float = None
-    sig_noise: float = None
-    sig_sel_id: int = None
-    rx_sel_id: int = None
-    N_r: int = None
-    N_sig: int = None
-    rand_params: dict = None
-    cf_range: list = None
-    psd_range: list = None
-    bw_range: list = None
-    spat_sig_range: list = None
-    az_range: list = None
-    el_range: list = None
-    aoa_mode: str = None
+    
     ant_d: list = None
     wl: float = None
     steer_rad: list = None
-
-    n_sigs_max: int = None
-    size_sam_mode: str = None
-    snr_sam_mode: str = None
-    noise_power: float = None
-    mask_mode: str = None
-    eval_smooth: bool = None
-    seed: int = None
-    seed_list: list = None
 
     t: np.ndarray = None
     t_tx: np.ndarray = None
@@ -141,22 +190,26 @@ class Signal_Utils(General):
     def __init__(self, config: SignalUtilsConfig, **overrides):
         super().__init__(config, **overrides)
         
+        self.plotter = Plot_Utils(PlotUtilsConfig(plot_level=self.config.plot_level), **overrides)
         self.kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
 
 
-    def lin_to_db(self, x, mode='pow'):
+    @staticmethod
+    def lin_to_db(x, mode='pow'):
         if mode=='pow':
             return 10*np.log10(x)
         elif mode=='mag':
             return 20*np.log10(x)
 
-    def db_to_lin(self, x, mode='pow'):
+    @staticmethod
+    def db_to_lin(x, mode='pow'):
         if mode == 'pow':
             return 10**(x/10)
         elif mode == 'mag':
             return 10**(x/20)
 
-    def wrap_angle(self, a, mode='rad'):
+    @staticmethod
+    def wrap_angle(a, mode='rad'):
         if mode=='rad':
             # return (a + np.pi) % (2*np.pi) - np.pi
             return np.angle(np.exp(1j * a))
@@ -164,7 +217,8 @@ class Signal_Utils(General):
             # return (a + 180.0) % 360.0 - 180.0
             return np.rad2deg(np.angle(np.exp(1j * np.deg2rad(a))))
 
-    def aoa_to_phase(self, aoa, wl=0.01, ant_d_m=[0.0]):
+    @staticmethod
+    def aoa_to_phase(aoa, wl=0.01, ant_d_m=[0.0]):
         ant_dim = len(ant_d_m)
         if ant_dim == 1:
             phase = 2 * np.pi * ant_d_m[0] / wl * np.sin(aoa)
@@ -172,7 +226,8 @@ class Signal_Utils(General):
             phase = 2 * np.pi * ant_d_m[0] / wl * np.sin(aoa[0]) + 2 * np.pi * ant_d_m[1] / wl * np.sin(aoa[1])
         return phase
 
-    def phase_to_aoa(self, phase, wl=0.01, ant_d_m=[0.0]):
+    @staticmethod
+    def phase_to_aoa(phase, wl=0.01, ant_d_m=[0.0]):
         ant_dim = len(ant_d_m)
         if ant_dim == 1:
             aoa = np.arcsin(phase * wl / (2 * np.pi * ant_d_m[0]))
@@ -180,25 +235,23 @@ class Signal_Utils(General):
             aoa = np.array([np.arcsin(phase * wl / (2 * np.pi * ant_d_m[0])), np.arcsin(phase * wl / (2 * np.pi * ant_d_m[1]))])
         return aoa
 
-    def mse(self, x, y):
+    @staticmethod
+    def mse(x, y):
         return np.mean(np.abs(x - y) ** 2)
     
-    def sinc(self, x):
+    @staticmethod
+    def sinc(x):
         sinc = np.sinc(x)       # sin(pi.x)/(pi.x)
         # sinc = np.sin(np.pi * x) / (np.pi * x)
         return sinc
 
-    def rect(self, x):
+    @staticmethod
+    def rect(x):
         rect = np.where(np.abs(x) <= 0.5, 1.0, 0.0)
         return rect
 
     def plot_rect_sync(self):
         N = 1024  # Number of samples
-        # T = 10  # Sampling interval
-        # fs = N/T
-        # t = np.linspace(-T/2, T/2, N, endpoint=False)
-        # freq = fftshift(np.fft.fftfreq(N, T))
-        # freq = np.linspace(-fs/2, fs/2, N, endpoint=True)
         n = np.arange(-N / 2, N / 2)
         om = np.linspace(-np.pi, np.pi, N, endpoint=True)
         omega = np.pi / 16
@@ -207,12 +260,12 @@ class Signal_Utils(General):
 
         sinc = self.sinc(a * n)
         rect = self.rect(n / M)
-        self.plot_signal(n, {"sinc": np.abs(sinc)}, scale='linear', legend=True)
-        self.plot_signal(om / np.pi,
+        self.plotter.plot_signal(n, {"sinc": np.abs(sinc)}, scale='linear', legend=True)
+        self.plotter.plot_signal(om / np.pi,
                             {"sinc_fft": np.abs(fftshift(fft(sinc))), "rect": self.rect(om / (2 * np.pi * a)) / a},
                             scale='linear', legend=True)
-        self.plot_signal(n, {"rect": np.abs(rect)}, scale='linear', legend=True)
-        self.plot_signal(om / np.pi, {"rect_fft": np.abs(fftshift(fft(rect))),"sinc": np.abs(self.sinc(om * (M + 1) / 2 / np.pi) * (M + 1))},
+        self.plotter.plot_signal(n, {"rect": np.abs(rect)}, scale='linear', legend=True)
+        self.plotter.plot_signal(om / np.pi, {"rect_fft": np.abs(fftshift(fft(rect))),"sinc": np.abs(self.sinc(om * (M + 1) / 2 / np.pi) * (M + 1))},
                             scale='linear', legend=True)
 
     def dft(self, x):
@@ -340,31 +393,6 @@ class Signal_Utils(General):
         return delay
 
     def extract_frac_delay(self, sig_1, sig_2, sc_range=[0, 0]):
-    
-        # corr = np.correlate(sig_1, sig_2, mode='full')
-        # max_corr_index = np.argmax(np.abs(corr))
-        # # delay_samples = max_corr_index - len(sig_2) + 1
-        
-        # y0 = np.abs(corr[max_corr_index - 1])
-        # y1 = np.abs(corr[max_corr_index])
-        # y2 = np.abs(corr[max_corr_index + 1])
-        
-        # frac_delay = 0.5 * (y0 - y2) / (y0 - 2*y1 + y2)
-
-
-
-        # # Upsample the transmitted and compensated signals to estimate fractional delay
-        # us_rate = 100
-        # sig_1_us = resample(sig_1, len(sig_1) * us_rate)
-        # sig_2_us = resample(sig_2, len(sig_2) * us_rate)
-
-        # # Perform cross-correlation again on the upsampled signals
-        # frac_delay_us = self.extract_delay(sig_1_us, sig_2_us)
-
-        # # Convert the upsampled delay to a fractional delay
-        # frac_delay = frac_delay_us / us_rate
-
-
         sig_1_f = fftshift(fft(sig_1, axis=-1))
         sig_2_f = fftshift(fft(sig_2, axis=-1))
         nfft = len(sig_1_f)
@@ -417,13 +445,6 @@ class Signal_Utils(General):
         n_points = min(sig_1.shape[0], sig_2.shape[0])
         delay = int(delay)
 
-        # if delay >= 0:
-        #     sig_1_adj = np.concatenate((sig_1[delay:], np.zeros(delay).astype(complex)))
-        #     sig_2_adj = sig_2.copy()
-        # else:
-        #     delay = abs(delay)
-        #     sig_1_adj = sig_1.copy()
-        #     sig_2_adj = np.concatenate((sig_2[delay:], np.zeros(delay).astype(complex)))
         sig_1_adj = np.roll(sig_1, -1*delay)
         sig_2_adj = sig_2.copy()
 
@@ -449,93 +470,6 @@ class Signal_Utils(General):
         return sig_1_adj, sig_2_adj
 
 
-    def gen_spatial_sig(self, N_sig=1, N_r=1, az_range=[-np.pi, np.pi], el_range=[-np.pi/2, np.pi/2], mode='uniform'):
-        ant_dim = len(self.config.ant_d)
-        if ant_dim == 1:
-            if mode=='uniform':
-                az = uniform(az_range[0], az_range[1], N_sig)
-            elif mode=='sweep':
-                az_range_t = az_range[1]-az_range[0]
-                az = np.linspace(az_range[0], az_range[1]-az_range_t/N_sig, N_sig)
-            spatial_sig = np.exp(
-                2 * np.pi * 1j * self.config.ant_d[0] / self.config.wl * np.arange(N_r).reshape((N_r, 1)) * np.sin(az.reshape((1, N_sig))))
-            return spatial_sig, [az]
-        elif ant_dim == 2:
-            spatial_sig = np.zeros((N_r, N_sig)).astype(complex)
-            if mode == 'uniform':
-                az = uniform(az_range[0], az_range[1], N_sig)
-                el = uniform(el_range[0], el_range[1], N_sig)
-            elif mode == 'sweep':
-                az_range_t = az_range[1] - az_range[0]
-                el_range_t = el_range[1] - el_range[0]
-                az = np.linspace(az_range[0], az_range[1]-az_range_t/N_sig, N_sig)
-                el = np.linspace(el_range[0], el_range[1]-el_range_t/N_sig, N_sig)
-            k = 2 * np.pi / self.config.wl
-            M = np.sqrt(N_r)
-            N = np.sqrt(N_r)
-            for i in range(N_sig):
-                ax = np.exp(1j * k * self.config.ant_d[0] * np.arange(M) * np.sin(el[i]) * np.cos(az[i]))
-                ay = np.exp(1j * k * self.config.ant_d[1] * np.arange(N) * np.sin(el[i]) * np.sin(az[i]))
-                spatial_sig[:, i] = np.kron(ax, ay)
-            return spatial_sig, [az,el]
-
-
-    def gen_rand_params(self):
-        self.print('Generating a set of random parameters.', 2)
-
-        if self.config.rand_params:
-            sig_bw = uniform(self.config.bw_range[0], self.config.bw_range[1], self.config.N_sig)
-            psd_range = self.config.psd_range/1e3/1e6
-            sig_psd = uniform(psd_range[0], psd_range[1], self.config.N_sig)
-            sig_cf = uniform(self.config.cf_range[0], self.config.cf_range[1], self.config.N_sig)
-
-            spat_sig_mag = uniform(self.config.spat_sig_range[0], self.config.spat_sig_range[1], (1, self.config.N_sig))
-            spat_sig_mag = np.tile(spat_sig_mag, (self.config.N_r, 1))
-            spatial_sig, aoa = self.gen_spatial_sig(N_sig=self.config.N_sig, N_r=self.config.N_r, az_range=self.config.az_range, el_range=self.config.el_range, mode=self.config.aoa_mode)
-            spatial_sig = spat_sig_mag * spatial_sig
-
-        else:
-            self.config.N_sig = 8
-            self.config.N_r = 4
-            sig_bw = np.array([23412323.42206957, 29720830.74807138, 28854411.42943605,
-                               13436699.17479161, 32625455.26622169, 32053137.51678639,
-                               35113044.93237082, 21712944.94126201])
-            sig_psd = np.array([1.82152663e-10+0.j, 2.18261433e-10+0.j, 2.10519428e-10+0.j,
-                               1.72903294e-10+0.j, 2.25096120e-10+0.j, 1.42163622e-10+0.j,
-                               1.16246992e-10+0.j, 1.26733169e-10+0.j])
-            sig_cf = np.array([ 76368431.6004079 ,  10009408.65004128, -17835240.41355851,
-                               -17457600.99681053, -11925292.61281498,  36570531.45445453,
-                                28089213.97482219,  36680162.41373056])
-            spatial_sig = np.array([[ 0.28560148+0.j        ,  0.49996994+0.j        ,
-                                     0.65436809+0.j        ,  0.77916855+0.j        ,
-                                     0.77740179+0.j        ,  0.72816271+0.j        ,
-                                     0.70354769+0.j        ,  0.79870358+0.j        ],
-                                   [ 0.28247656-0.04213306j,  0.23454661-0.44154029j,
-                                     0.38195112-0.5313294j ,  0.53913962+0.56252299j,
-                                     0.72772125+0.27345077j, -0.08719831-0.72292281j,
-                                     0.30553255-0.63374223j,  0.73871532+0.30368912j],
-                                   [ 0.21580258+0.18707605j,  0.3849812 +0.31899753j,
-                                     0.65124563-0.06384924j, -0.75863413-0.17770168j,
-                                     0.57519734-0.52297377j, -0.44911618-0.5731628j ,
-                                     0.3280136 -0.62240375j,  0.33967472+0.72287516j],
-                                   [ 0.24103957+0.1531931j ,  0.46232038-0.19034129j,
-                                     0.32828468-0.56606251j, -0.39663875-0.6706574j ,
-                                     0.72239466-0.28722724j, -0.51525611+0.51452121j,
-                                    -0.41820151-0.56576218j,  0.0393057 +0.79773584j]])
-            aoa = None
-
-        sig_psd = sig_psd.astype(complex)
-        spatial_sig = spatial_sig.astype(complex)
-
-        self.config.sig_bw = sig_bw
-        self.config.sig_psd = sig_psd
-        self.config.sig_cf = sig_cf
-        self.config.spatial_sig = spatial_sig
-        self.config.aoa = aoa
-
-        return (sig_bw, sig_psd, sig_cf, spatial_sig, aoa)
-
-
     def gen_noise(self, mode='complex'):
         if mode=='real':
             noise = randn(self.config.n_samples).astype(complex)           # Generate noise with PSD=1/fs W/Hz
@@ -545,128 +479,6 @@ class Signal_Utils(General):
 
         return noise
 
-
-    def generate_signals(self, sig_bw, sig_psd, sig_cf, spatial_sig):
-        self.print('Generating a set of signals and a rx signal.',2)
-
-        rx = np.zeros((self.config.N_r, self.config.n_samples), dtype=complex)
-        sigs = np.zeros((self.config.N_sig, self.config.n_samples), dtype=complex)
-
-        for i in range(self.config.N_sig):
-            fil_sig = firwin(1001, sig_bw[i] / self.config.fs)
-            # sigs[i, :] = np.exp(2 * np.pi * 1j * sig_cf[i] * t) * sig_psd[i] * np.convolve(noise, fil_sig, mode='same')
-            sigs[i, :] = np.exp(2 * np.pi * 1j * sig_cf[i] * self.config.t) * np.sqrt(
-                sig_psd[i]*self.config.fs/2) * lfilter(fil_sig, np.array([1]), self.gen_noise(mode='complex'))
-            rx += np.outer(spatial_sig[:, i], sigs[i, :])
-
-            if self.config.sig_noise:
-                yvar = np.mean(np.abs(sigs[i, :]) ** 2)
-                wvar = yvar / self.config.config.snr
-                sigs[i, :] += np.sqrt(wvar / 2) * self.gen_noise(mode='complex')
-
-        yvar = np.mean(np.abs(rx) ** 2, axis=1)
-        wvar = yvar / self.config.snr
-        self.noise_psd = np.mean(wvar/self.config.fs).astype(complex)
-        noise_rx = np.array([self.gen_noise(mode='complex') for _ in range(self.config.N_r)])
-        noise_rx = np.sqrt(wvar[:, None] / 2) * noise_rx
-        rx += noise_rx
-
-        if self.config.plot_level >= 2:
-            plt.figure()
-            # plt.figure(figsize=(10,6))
-            # plt.tight_layout()
-            plt.subplots_adjust(wspace=0.5, hspace=1.0)
-            plt.subplot(3, 1, 1)
-            for i in range(self.config.N_sig):
-                spectrum = fftshift(fft(sigs[i, :]))
-                spectrum = self.lin_to_db(np.abs(spectrum), mode='mag')
-                plt.plot(self.config.freq, spectrum, color=rand(3), linewidth=0.5)
-            plt.title('Frequency spectrum of initial wideband signals')
-            plt.xlabel('Frequency (Hz)')
-            plt.ylabel('Magnitude (dB)')
-
-            plt.subplot(3, 1, 2)
-            spectrum = fftshift(fft(rx[self.rx_sel_id, :]))
-            spectrum = self.lin_to_db(np.abs(spectrum), mode='mag')
-            plt.plot(self.config.freq, spectrum, 'b-', linewidth=0.5)
-            plt.title('Frequency spectrum of RX signal in a selected antenna')
-            plt.xlabel('Frequency (Hz)')
-            plt.ylabel('Magnitude (dB)')
-
-            plt.subplot(3, 1, 3)
-            spectrum = fftshift(fft(sigs[self.config.sig_sel_id, :]))
-            spectrum = self.lin_to_db(np.abs(spectrum), mode='mag')
-            plt.plot(self.config.freq, spectrum, 'r-', linewidth=0.5)
-            plt.title('Frequency spectrum of the desired wideband signal')
-            plt.xlabel('Frequency (Hz)')
-            plt.ylabel('Magnitude (dB)')
-
-            plt.savefig(os.path.join(self.config.figs_dir, 'tx_rx_sigs.pdf'), format='pdf')
-            # plt.show(block=False)
-
-        return (rx, sigs)
-
-
-    def generate_random_regions(self, shape=(1000,), n_regions=1, min_size=None, max_size=None, size_sam_mode='log'):
-        regions = []
-        ndims = len(shape)
-        for _ in range(n_regions):
-            region_slices = []
-            for d, dim in enumerate(shape):
-                if min_size is not None and max_size is not None:
-                    s1 = min_size[d]
-                    s2 = max_size[d] + 1
-                else:
-                    s1 = 1
-                    s2 = min(101, (dim+1)//2+1)
-                if size_sam_mode=='lin':
-                    size = randint(s1, s2)
-                elif size_sam_mode=='log':
-                    margin=1e-9
-                    size = uniform(np.log10(s1), np.log10(s2-margin))
-                    size = int(10 ** size)
-                start = randint(0, dim-size+1)
-                size = min(size, dim-start)
-                region_slices.append(slice(start, start + size))
-            regions.append(tuple(region_slices))
-
-        return regions
-
-
-    def generate_random_PSD(self, shape=(1000,), sig_regions=None, n_sigs=1, n_sigs_max=1, sig_size_min=None, sig_size_max=None, noise_power=1, snr_range=np.array([10,10]), size_sam_mode='log', snr_sam_mode='log', mask_mode='binary'):
-
-        sig_power_range = noise_power * snr_range.astype(float)
-        psd = exponential(noise_power, shape)
-        if mask_mode=='binary' or mask_mode=='snr':
-            mask = np.zeros(shape, dtype=float)
-        elif mask_mode=='channels':
-            mask = np.zeros((n_sigs_max,)+shape, dtype=float)
-
-        if sig_regions is None:
-            regions = self.generate_random_regions(shape=shape, n_regions=n_sigs, min_size=sig_size_min, max_size=sig_size_max, size_sam_mode=size_sam_mode)
-        else:
-            regions = sig_regions
-
-        for sig_id, region in enumerate(regions):
-            if snr_sam_mode=='lin':
-                # sig_power = choice(sig_powers)
-                sig_power = uniform(sig_power_range[0], sig_power_range[1])
-            elif snr_sam_mode=='log':
-                sig_power = uniform(np.log10(sig_power_range[0]), np.log10(sig_power_range[1]))
-                sig_power = 10**sig_power
-            region_shape = tuple(slice_.stop - slice_.start for slice_ in region)
-            region_power = exponential(sig_power, region_shape)
-            psd[region] += region_power
-            if mask_mode=='binary':
-                mask[region] = 1.0
-            elif mask_mode=='snr':
-                mask[region] += sig_power/noise_power
-            elif mask_mode=='channels':
-                region_m=(slice(sig_id, sig_id+1),)+region
-                mask[region_m] = 1.0
-    
-        return (psd, mask)
-    
 
     def slice_size(self, slice=None):
         if slice is None:
@@ -748,41 +560,6 @@ class Signal_Utils(General):
             # false_alarm = 0.0
 
         return (det_rate, missed, false_alarm)
-    
-
-    def generate_psd_dataset(self, dataset_path='./data/psd_dataset.npz', n_dataset=1000, shape=(1000,), n_sigs_min=1, n_sigs_max=1, n_sigs_p_dist=None, sig_size_min=None, sig_size_max=None, snr_range=np.array([10,10]), mask_mode='binary'): 
-        self.print("Starting to generate PSD dataset with n_dataset={}, shape={}, n_sigs={}-{}, n_sigs_p_dist:{}, sig_size={}-{}, snrs={:0.3f}-{:0.3f}...".format(n_dataset, shape, n_sigs_min, n_sigs_max, n_sigs_p_dist, sig_size_min, sig_size_max, snr_range[0], snr_range[1]),thr=0)
-        
-        n_sigs_list = np.arange(n_sigs_min, n_sigs_max+1)
-        data = []
-        masks = []
-        bboxes = []
-        objectnesses = []
-        classes = []
-        for _ in range(n_dataset):
-            n_sigs = np.random.choice(n_sigs_list, p=n_sigs_p_dist)
-            # n_sigs = randint(n_sigs_min, n_sigs_max+1)
-            regions = self.generate_random_regions(shape=shape, n_regions=n_sigs, min_size=sig_size_min, max_size=sig_size_max, size_sam_mode=self.config.size_sam_mode)
-            (psd, mask) = self.generate_random_PSD(shape=shape, sig_regions=regions, n_sigs=n_sigs, n_sigs_max=n_sigs_max, sig_size_min=sig_size_min, sig_size_max=sig_size_max, noise_power=self.noise_power, snr_range=snr_range, size_sam_mode=self.config.size_sam_mode, snr_sam_mode=self.config.snr_sam_mode, mask_mode=mask_mode)
-            data.append(psd)
-            masks.append(mask)
-            bbox = np.zeros((n_sigs_max, 2*len(shape)), dtype=float)
-            for i, region in enumerate(regions):
-                bbox[i] = np.array([slice_.start for slice_ in region] + [slice_.stop-slice_.start for slice_ in region])
-            bbox = bbox.flatten()
-            bboxes.append(bbox)
-            objectness = np.array([1.0]*n_sigs + [0.0]*(n_sigs_max-n_sigs), dtype=float)
-            objectnesses.append(objectness)
-            class_ = np.array([0.0]*n_sigs_max, dtype=float)
-            classes.append(class_)
-        data = np.array(data)
-        masks = np.array(masks)
-        bboxes = np.array(bboxes)
-        objectnesses = np.array(objectnesses)
-        classes = np.array(classes)
-        np.savez(dataset_path, data=data, masks=masks, bboxes=bboxes, objectnesses=objectnesses, classes=classes)
-        
-        self.print(f"Dataset of data shape {data.shape} and mask shape {masks.shape} saved to {dataset_path}",thr=0)
 
 
     def generate_tone(self, freq_mode='sc', sc=None, f=None, sig_mode='tone_2', gen_mode='fft'):
@@ -871,11 +648,6 @@ class Signal_Utils(General):
             wb_fd = zc.copy()
             index_zeros = np.arange(self.config.sc_range[1], self.config.nfft_tx + self.config.sc_range[0])
             wb_fd[index_zeros] = 0
-            
-            # wb_td = zc.copy()
-            # wb_fd = fftshift(fft(wb_td, axis=0))
-            # wb_fd[:((self.config.nfft_tx >> 1) + sc_range[0])] = 0
-            # wb_fd[((self.config.nfft_tx >> 1) + sc_range[1] + 1):] = 0
 
             # wb_fd = ifftshift(wb_fd, axes=0)
             wb_td = ifft(wb_fd, axis=0)
@@ -909,89 +681,6 @@ class Signal_Utils(General):
         X[:,1] = X2.flatten()
 
 
-    def multi_arr_corr(x, arr, r, lam):
-        """
-        Computes the correlation between the received signal and the expected signal
-        for a batch of candidate target locations at a set of arrays
-
-        Parameters
-        ----------
-        x : np.array of shape (npoints,p)
-            Location of the candidate targets 
-            where nx is the number of candidate targets and p is the 
-            dimension of the space
-        arr : np.array  of shape (m,nrx,p)
-            Array locations where arr[i,j,:] is the location
-            of element j in the measurement i where m is the number of 
-            measurements
-        r : complex np.array of size (m, nrx)
-            measured values where r[i,j] is the complex measured 
-            value in measurement i on element j
-        lam : float
-            Wavelength of the signal
-            
-        Returns
-        -------
-        rho : np.array of shape (m)
-            The real values of the summed correlation at each of the measurements
-        """
-        
-        # Compute the distances from the arrays to the target
-        # (:,m,nrx,p) * (npoints,:,:,p)
-        d = np.sqrt(np.sum((arr[None,:,:,:] - x[:,None,None,:])**2, axis=3))
-
-        # Compute the phase difference
-        dexp = np.exp(-2*np.pi*1j/lam*d)
-
-        #(npoints, m, nrx)
-        # Compute the correlation
-        # (npoints, m)
-        # (npoints)
-        rho = np.sum( np.abs(np.sum(r[None,:,:]*dexp, axis=2))**2, axis=1 )
-
-        return rho
-
-
-    def feval_torch(x, arr, r, lam):
-        """
-        Torch version of the above function.
-        Computes the correlation between the received signal and the expected signal
-        for a batch of candidate target locations
-
-        Parameters
-        ----------
-        x : torch.Tensor of shape (p)
-            Location of the candidate targets 
-            where nx is the number of candidate targets and p is the 
-            dimension of the space
-        arr : torch.Tensor of shape (m, nrx, p)
-            Array locations where arr[i, j, :] is the location
-            of element j in the measurement i where m is the number of 
-            measurements
-        r : torch.Tensor of size (m, nrx)
-            measured values where r[i, j] is the complex measured 
-            value in measurement i on element j
-        lam : float
-            Wavelength of the signal
-            
-        Returns
-        -------
-        rho : scalar
-            The real values of the summed correlation at each of the measurements
-        """
-
-        # Compute the distances from the arrays to the target
-        d = torch.sqrt(torch.sum((arr[:, :, :] - x[None, None, :]) ** 2, dim=2))
-
-        # Compute the phase difference
-        dexp = torch.exp(-2 * np.pi * 1j / lam * d)
-
-        # Compute the correlation
-        rho = torch.sum(torch.abs(torch.sum(r * dexp, dim=1)) ** 2, dim=0)
-
-        return rho
-
-
     def beam_form(self, sigs):
         sigs_bf = sigs.copy()
         n_sigs = sigs.shape[0]
@@ -1014,14 +703,6 @@ class Signal_Utils(General):
             sigs_bf[i, :] = np.exp(1j * phase_shift) * sigs[i, :]
 
         return sigs_bf
-
-    
-    def filter_noise_symbols(self, sig, mag_thr=1e-2):
-        sig_fil = sig.copy()
-        sig_fil = sig_fil[np.abs(sig_fil) > mag_thr]
-        # sig_fil[np.abs(sig_fil) < mag_thr] = 0
-
-        return sig_fil
 
 
     def filter(self, sig, center_freq=0, cutoff=50e6, fil_order=1000, plot=False):
@@ -1078,10 +759,6 @@ class Signal_Utils(General):
                     cfo_est[rx_ant_id] = coarse_cfo
 
                 elif mode == 'fine':
-                    # h_est_full_ = h_est_full[rx_ant_id, tx_ant_id]
-                    # H_est_full_ = fft(h_est_full_)
-                    # phi = np.angle(fftshift(H_est_full_))
-
                     # phi = np.angle(rxtd[rx_ant_id] * np.conj(txtd[tx_ant_id]))
                     phi = np.angle(rxfd[rx_ant_id] * np.conj(txfd[tx_ant_id]))
                     phi = phi[(sc_range[0]+n_samples//2):(sc_range[1]+n_samples//2+1)]
@@ -1381,13 +1058,13 @@ class Signal_Utils(General):
                 title = 'Channel response in the time domain \n between TX antenna {} and RX antenna {}'.format(tx_ant_id, rx_ant_id)
                 xlabel = 'Time (s)'
                 ylabel = 'Normalized Magnitude (dB)'
-                self.plot_signal(t_ch, sig, scale='dB20', title=title, xlabel=xlabel, ylabel=ylabel, plot_level=5)
+                self.plotter.plot_signal(t_ch, sig, scale='dB20', title=title, xlabel=xlabel, ylabel=ylabel, plot_level=5)
 
                 sig = np.abs(fftshift(H_est_full_))
                 title = 'Channel response in the frequency domain \n between TX antenna {} and RX antenna {}'.format(tx_ant_id, rx_ant_id)
                 xlabel = 'Frequency (MHz)'
                 ylabel = 'Magnitude (dB)'
-                self.plot_signal(freq_ch, sig, scale='dB20', title=title, xlabel=xlabel, ylabel=ylabel, plot_level=5)
+                self.plotter.plot_signal(freq_ch, sig, scale='dB20', title=title, xlabel=xlabel, ylabel=ylabel, plot_level=5)
 
         # H_est = np.linalg.pinv(txfd.T) @ rxfd.T
         # H_est = H_est.T
@@ -1413,23 +1090,6 @@ class Signal_Utils(General):
 
         rxtd_eq = rxtd.copy()
         rxfd_eq = rxfd.copy()
-
-        # print('H_det: {}'.format(np.abs(np.linalg.det(H))))
-        
-        # if np.linalg.matrix_rank(H) == min(H.shape) and np.abs(np.linalg.det(H)) > 1e-3:
-        #     H_inv = np.linalg.pinv(H)
-        # else:
-        #     epsilon = 1e-6
-        #     H = H + epsilon * np.eye(H.shape[0])
-        #     H_inv = np.linalg.pinv(H)
-
-        # if np.abs(np.linalg.det(H)) > 1e-3:
-        #     rxfd_eq = H_inv @ rxfd
-        # else:
-        #     for rx_ant_id in range(rxtd_eq.shape[0]):
-        #         phase_offset = self.calc_phase_offset(rxfd[rx_ant_id], txfd[0])
-        #         rxfd_eq[rx_ant_id], _ = self.adjust_phase(rxfd[rx_ant_id], txfd[0], phase_offset)
-
 
         rxfd_ = fftshift(rxfd, axes=-1)
         rxfd_eq_ = fftshift(rxfd_eq, axes=-1)
@@ -1532,7 +1192,7 @@ class Signal_Utils(General):
         rx_phase_list, aoa_list = self.filter_aoa(rx_phase_list, rx_phase, aoa_list, aoa)
 
         return rx_phase_list, aoa_list
-    
+
 
     def estimate_mimo_params(self, txtd, rxtd, fc, h_full, H, rx_phase_list, aoa_list):
         # U, S, Vh = np.linalg.svd(H)
@@ -1546,230 +1206,4 @@ class Signal_Utils(General):
 
         return rx_phase_list, aoa_list
 
-
-    # plot_signal(self, x, sig, mode='time_IQ', scale='linear', title='Custom Title', xlabel='Time', ylabel='Amplitude', plot_args={'color': 'red', 'linestyle': '--'}, xlim=(0, 10), ylim=(-1, 1), legend=True)
-    def plot_signal(self, x=None, sigs=None, mode='time', scale='linear', plot_level=0, **kwargs):
-        if self.plot_level<plot_level:
-            return
-        
-        colors = ['blue', 'red', 'green', 'cyan', 'magenta', 'orange', 'purple']
-
-        if isinstance(sigs, dict):
-            sigs_dict = sigs
-        else:
-            sigs_dict = {"Signal": sigs}
-
-        plt.figure()
-        plot_args = kwargs.get('plot_args', {})
-
-        for i, sig_name in enumerate(sigs_dict.keys()):
-            if x is None:
-                x = np.arange(len(sigs_dict[sig_name]))
-
-            if mode=='time' or mode=='time_IQ':
-                sig_plot = sigs_dict[sig_name].copy()
-            elif mode=='fft':
-                sig_plot = np.abs(fftshift(fft(sigs_dict[sig_name])))
-            elif mode=='psd':
-                freq, sig_plot = welch(sigs_dict[sig_name], self.config.fs, nperseg=self.config.nfft)
-                x = freq
-            
-            if scale=='dB10':
-                sig_plot = self.lin_to_db(sig_plot, mode='pow')
-            if scale=='dB20':
-                sig_plot = self.lin_to_db(sig_plot, mode='mag')
-            elif scale=='linear':
-                pass
-
-            if mode!='time_IQ':
-                plt.plot(x, sig_plot, color=colors[i], label=sig_name, **plot_args)
-            else:
-                plt.plot(x, np.real(sig_plot), color=colors[3*i], label='I', **plot_args)
-                plt.plot(x, np.imag(sig_plot), color=colors[3*i+1], label='Q', **plot_args)
-                plt.plot(x, np.abs(sig_plot), color=colors[3*i+2], label='Mag', **plot_args)
-
-        title = kwargs.get('title', 'Signal in time domain')
-        xlabel = kwargs.get('xlabel', 'Sample')
-        ylabel = kwargs.get('ylabel', 'Magnitude (dB)')
-
-        plt.title(title)
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.minorticks_on()
-        plt.grid(0.2)
-
-        legend = kwargs.get('legend', False)
-        if legend:
-            plt.legend()
-
-        plt.autoscale()
-        if 'xlim' in kwargs:
-            plt.xlim(kwargs['xlim'])
-        if 'ylim' in kwargs:
-            ylim=kwargs['ylim']
-            if scale=='dB10':
-                ylim = (self.lin_to_db(ylim[0], mode='pow'), self.lin_to_db(ylim[1], mode='pow'))
-            if scale=='dB20':
-                ylim = (self.lin_to_db(ylim[0], mode='mag'), self.lin_to_db(ylim[1], mode='mag'))
-            plt.ylim(ylim)
-        plt.tight_layout()
-
-        # plt.axvline(x=30e6, color='g', linestyle='--', linewidth=1)
-
-        plt.show()
-
-
-
-    def set_plot_params(self, ax=None, lines=None, plot_params_dict=None):
-
-        # Truncate the title to a maximum of 30 characters
-        if plot_params_dict['title'] is not None:
-            title = plot_params_dict['title']
-            title = (title[:plot_params_dict['title_max_chars']] + '...') if len(title) > plot_params_dict['title_max_chars'] else title
-            ax.set_title(plot_params_dict['title'])
-        if plot_params_dict['xlabel'] is not None:
-            ax.set_xlabel(plot_params_dict['xlabel'])
-        if plot_params_dict['ylabel'] is not None:
-            ax.set_ylabel(plot_params_dict['ylabel'])
-
-        ax.title.set_fontsize(plot_params_dict['title_size'])
-        ax.title.set_weight(plot_params_dict['title_weight'])
-        ax.xaxis.label.set_fontsize(plot_params_dict['xaxis_size'])
-        ax.yaxis.label.set_fontsize(plot_params_dict['yaxis_size'])
-        ax.tick_params(axis='both', which='major', labelsize=plot_params_dict['ticks_size'])  # For major ticks
-        ax.legend(fontsize=plot_params_dict['legend_size'])
-
-        ax.grid(True)
-        ax.minorticks_on()
-
-        if lines is not None:
-            for line in lines:
-                line.set_linewidth(plot_params_dict['line_width'])
-
-        plt.tight_layout()
-        if plot_params_dict['hspace'] is not None and plot_params_dict['wspace'] is not None:
-            plt.subplots_adjust(hspace=plot_params_dict['hspace'], wspace=plot_params_dict['wspace'])
-
-        return ax, lines
-
-
-
-
-    def draw_half_gauge(self, ax, min_val=-90, max_val=90):
-        # Left half gauge
-        ax.add_patch(Wedge((0.5, 0.5), 0.4, 90, -90, color="#B5A4D6", zorder=1))
-        ax.add_patch(Wedge((0.5, 0.5), 0.35, 90, -90, color="#E6E6FA", zorder=2))
-        # Right half gauge
-        ax.add_patch(Wedge((0.5, 0.5), 0.4, -90, 90, color="#B5A4D6", zorder=1))
-        ax.add_patch(Wedge((0.5, 0.5), 0.35, -90, 90, color="#E6E6FA", zorder=2))
-
-        num_ticks = 18
-        for i in range(num_ticks + 1):
-            angle = i * (180 / num_ticks)
-            tick_length = 0.05 if i % 2 == 0 else 0.03
-            ax.plot([0.5 + 0.35 * np.cos(np.radians(angle)), 0.5 + (0.35 - tick_length) * np.cos(np.radians(angle))],
-                    [0.5 + 0.35 * np.sin(np.radians(angle)), 0.5 + (0.35 - tick_length) * np.sin(np.radians(angle))],
-                    color='black', lw=1, zorder=3)
-
-        for i in range(num_ticks + 1):
-            angle = i * (180 / num_ticks)
-            value = -1 * (min_val + (max_val - min_val) * (i / num_ticks))
-            x = 0.5 + 0.28 * np.cos(np.radians(angle))
-            y = 0.5 + 0.28 * np.sin(np.radians(angle))
-            ax.text(x, y, f'{int(value)}', fontsize=10, ha='center', va='center')
-
-        ax.add_patch(Circle((0.5, 0.5), 0.05, color="black", zorder=5))
-        ax.text(0.5, 0.95, "Angle of Arrival", fontsize=20, fontweight='bold', horizontalalignment='center')
-        ax.set_aspect('equal')
-
-
-    def gauge_update_needle(self, ax, value, min_val=90, max_val=-90):
-        if value != np.nan and value != None:
-            angle = (value - min_val) * 180 / (max_val - min_val)
-        else:
-            return
-        x = 0.5 + 0.35 * np.cos(np.radians(angle))
-        y = 0.5 + 0.35 * np.sin(np.radians(angle))
-
-        arrow = FancyArrow(0.5, 0.5, x-0.5, y-0.5, width=0.02, head_width=0.05, head_length=0.08, color='#57068C', zorder=6)
-
-        old_arrows = [p for p in ax.patches if isinstance(p, FancyArrow)]
-        for old_arrow in old_arrows:
-            old_arrow.remove()
-
-        ax.add_patch(arrow)
-
-
-class AoAKalmanFilter:
-    """
-    Wrapped-angle Kalman filter with a persistent prior across windows.
-    State is [angle; angular_rate]. All internal math uses radians; inputs/outputs
-    to the public API are in degrees where noted.
-
-    Parameters
-    ----------
-    dt : float
-        Sampling period (in seconds) of the AoA measurements inside one fusion
-        window (e.g., 0.1 for 100 ms). This also sets the discrete-time model step.
-    sigma_meas_deg : float
-        Standard deviation of the AoA measurement noise in degrees.
-        Smaller -> the filter trusts measurements more; larger -> trusts the model more.
-    sigma_acc_deg : float, optional (default=0.3)
-        Standard deviation (in deg/s^2) of the angular acceleration driving
-        the process noise. Larger -> more responsive to rapid changes (less smooth);
-        smaller -> smoother output (more model-trusting).
-    init_angle_deg : float or None, optional
-        If provided, the filter is initialized with this AoA (in degrees).
-        If None, the first observed sample in `step()` will be used to initialize.
-
-    Notes
-    -----
-    - Angles are wrapped to (-pi, pi] internally to avoid discontinuities.
-    - The constant-velocity (angle-rate) model is used:
-        x_k = [ angle_k, angular_rate_k ]^T
-        x_{k+1} = F x_k + w_k,  z_k = H x_k + v_k
-      with F = [[1, dt], [0, 1]], H = [[1, 0]].
-    """
-
-    def __init__(self, dt, sigma_meas_deg, sigma_acc_deg=0.3, init_angle_deg=None):
-        self.dt = float(dt)
-        self.sigma_meas = float(np.deg2rad(sigma_meas_deg))
-        self.sigma_acc = float(np.deg2rad(sigma_acc_deg))
-        self.F = np.array([[1.0, self.dt],[0.0, 1.0]])
-        self.H = np.array([[1.0, 0.0]])
-        self.Q = self.sigma_acc**2 * np.array([[self.dt**3/3.0, self.dt**2/2.0],
-                                               [self.dt**2/2.0, self.dt]])
-        self.R = self.sigma_meas**2
-        self.P = np.diag([np.deg2rad(30.0)**2, np.deg2rad(2.0)**2])
-        self.initialized = False
-        self.x = None
-        if init_angle_deg is not None:
-            self.reset(init_angle_deg)
-    
-    def wrap_angle_rad(self, a):
-        return (a + np.pi) % (2*np.pi) - np.pi
-
-    def wrap_angle_deg(self, a):
-        return (a + 180.0) % 360.0 - 180.0
-
-    def reset(self, init_angle_deg):
-        self.x = np.array([np.deg2rad(init_angle_deg), 0.0])
-        self.x[0] = self.wrap_angle_rad(self.x[0])
-        self.P = np.diag([np.deg2rad(30.0)**2, np.deg2rad(2.0)**2])
-        self.initialized = True
-
-    def step(self, angles_deg_1s):
-        z_list = np.deg2rad(np.asarray(angles_deg_1s, dtype=float))
-        if not self.initialized:
-            self.reset(np.rad2deg(z_list[0]))
-        for z in z_list:
-            self.x = self.F @ self.x
-            self.P = self.F @ self.P @ self.F.T + self.Q
-            innov = self.wrap_angle_rad(z - (self.H @ self.x)[0])
-            S = (self.H @ self.P @ self.H.T)[0, 0] + self.R
-            K = (self.P @ self.H.T)[:, 0] / S
-            self.x = self.x + K * innov
-            self.P = (np.eye(2) - K[:, None] @ self.H) @ self.P
-            self.x[0] = self.wrap_angle_rad(self.x[0])
-        return float(np.rad2deg(self.x[0]))
 
