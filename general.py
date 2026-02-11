@@ -13,6 +13,7 @@ import hashlib
 
 import numpy as np
 import matplotlib.pyplot as plt
+
 try:
     import torch
 except:
@@ -23,10 +24,10 @@ except:
 class GeneralConfig:
     verbose_level: int = 5
     plot_level: int = 5
-    figs_dir: str = './figs/'
-    logs_dir: str = './logs/'
-    data_dir: str = './data/'
-    random_str: str = ''
+    figs_dir: str = "./figs/"
+    logs_dir: str = "./logs/"
+    data_dir: str = "./data/"
+    random_str: str = ""
 
     def update_from_config(self, config):
         """
@@ -49,10 +50,9 @@ class GeneralConfig:
         """
         Update all existing parameters of this config from a JSON file. Extra keys are ignored.
         """
-        with open(file_path, 'r') as json_file:
+        with open(file_path, "r") as json_file:
             json_dict = json.load(json_file)
         return self.update_from_config(json_dict)
-
 
     def copy(self):
         return copy.deepcopy(self)
@@ -73,7 +73,6 @@ class General(object):
 
         self.config = replace(config, **overrides)  # makes a new config
 
-
     def create_dirs(self, dir_list=[]):
         """
         Creates directories for figures, logs, and data if they do not exist.
@@ -87,13 +86,11 @@ class General(object):
         os.makedirs(self.config.data_dir, exist_ok=True)
         for d in dir_list:
             os.makedirs(d, exist_ok=True)
-        
-        
+
     def copy(self):
         return copy.deepcopy(self)
-    
 
-    def print(self, text='', thr=0):
+    def print(self, text="", thr=0):
         """
         Prints the given text if the verbose level is greater than or equal to the specified threshold.
         Args:
@@ -101,28 +98,26 @@ class General(object):
             thr (int): The threshold level for verbosity. The text will be printed only if
                        the instance's verbose_level is greater than or equal to this value. Defaults to 0.
         """
-        if self.config.verbose_level>=thr:
+        if self.config.verbose_level >= thr:
             print(text)
-
 
     def gen_random_str(self, length=6):
         """
         Generates a random string of specified length.
         This method creates a random string consisting of ASCII letters and digits.
-        The generated string is stored in the instance variable `random_str` and 
+        The generated string is stored in the instance variable `random_str` and
         also printed out.
         Args:
-            length (int, optional): The length of the random string to generate. 
+            length (int, optional): The length of the random string to generate.
                                     Defaults to 6.
         Returns:
             str: The generated random string.
         """
 
         letters = string.ascii_letters + string.digits
-        self.config.random_str = ''.join(random.choice(letters) for i in range(length))
-        self.print("Random string for this run: {}".format(self.config.random_str),thr=0)
+        self.config.random_str = "".join(random.choice(letters) for i in range(length))
+        self.print("Random string for this run: {}".format(self.config.random_str), thr=0)
         return self.config.random_str
-
 
     def print_info(self, params):
         """
@@ -143,32 +138,32 @@ class General(object):
         current_datetime = now.strftime("%Y-%m-%d %H:%M:%S")
         # Get the latest Git commit ID
         try:
-            latest_commit_id = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode('utf-8')
+            latest_commit_id = (
+                subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode("utf-8")
+            )
         except subprocess.CalledProcessError:
             latest_commit_id = "No Git repository found or Git command failed."
 
         # Print the formatted date, time, and latest commit ID
-        self.print(f"Current Date and Time: {current_datetime}",thr=0)
-        self.print(f"Latest Git Commit ID: {latest_commit_id}",thr=0)
-
+        self.print(f"Current Date and Time: {current_datetime}", thr=0)
+        self.print(f"Latest Git Commit ID: {latest_commit_id}", thr=0)
 
     def print_params(self, params=None):
         """
         Prints the attributes of the given params object.
         Args:
-            params (object): An object whose attributes will be printed. 
+            params (object): An object whose attributes will be printed.
                              Only non-callable attributes that do not start with '__' will be printed.
         """
         if params is None:
             params = self
 
-        self.print("Run parameters:",thr=0)
+        self.print("Run parameters:", thr=0)
         for attr in dir(params):
             if not callable(getattr(params, attr)) and not attr.startswith("__"):
-                self.print(f"{attr} = {getattr(params, attr)}",thr=0)
-        self.print('\n',thr=0)
+                self.print(f"{attr} = {getattr(params, attr)}", thr=0)
+        self.print("\n", thr=0)
 
-    
     def set_seed(self, seed=None, to_set=["numpy"]):
         """
         Sets the random seed for reproducibility.
@@ -178,7 +173,7 @@ class General(object):
         """
         if seed is None:
             seed = np.random.randint(0, 2**32 - 1)
-        self.print(f"Random seed: {seed}",thr=5)
+        self.print(f"Random seed: {seed}", thr=5)
         for lib in to_set:
             if lib == "numpy":
                 np.random.seed(seed)
@@ -188,17 +183,18 @@ class General(object):
                     torch.cuda.manual_seed_all(seed)
             elif lib == "cupy":
                 import cupy as cp
+
                 cp.random.seed(seed)
-            elif lib =="tensorflow":
+            elif lib == "tensorflow":
                 import tensorflow as tf
+
                 tf.random.set_seed(seed)
             elif lib == "sionna":
                 import sionna
+
                 sionna.phy.config.seed = seed
             else:
                 self.print(f"Library '{lib}' not recognized. Seed not set.", thr=1)
-
-
 
     def import_attributes(self, params, obj=None, add_atts=True, overwrite=True):
         """
@@ -216,11 +212,11 @@ class General(object):
                         setattr(obj, attr, getattr(params, attr))
                         self.print(f"Attribute '{attr}' imported from params to {obj}.", thr=6)
                     else:
-                        self.print(f"Attribute '{attr}' already exists in {obj}. Skipping import.", thr=6)
+                        self.print(
+                            f"Attribute '{attr}' already exists in {obj}. Skipping import.", thr=6
+                        )
                 else:
                     self.print(f"Attribute '{attr}' not found in {obj}. Importing.", thr=6)
-
-
 
     # Modify a parameter in the Python script
     def modify_text_file(self, file_path, param_name, new_value):
@@ -241,24 +237,29 @@ class General(object):
 
         changed = False
 
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             lines = file.readlines()
-        with open(file_path, 'w') as file:
+        with open(file_path, "w") as file:
             for line in lines:
-                if param_name in line and '=' in line:
-                    old_value = line.split('=')[1].strip()
+                if param_name in line and "=" in line:
+                    old_value = line.split("=")[1].strip()
                     if old_value != repr(new_value):
                         line = f"{param_name} = {repr(new_value)}\n"
                         changed = True
-                        self.print(f"Parameter '{param_name}' updated to '{new_value}' in {file_path}.", thr=3)
+                        self.print(
+                            f"Parameter '{param_name}' updated to '{new_value}' in {file_path}.",
+                            thr=3,
+                        )
                     else:
                         changed = False
-                        self.print(f"Parameter '{param_name}' already set to '{new_value}' in {file_path}.", thr=5)
+                        self.print(
+                            f"Parameter '{param_name}' already set to '{new_value}' in {file_path}.",
+                            thr=5,
+                        )
 
                 file.write(line)
 
         return changed
-
 
     # Convert .py to .ipynb
     def convert_file_format(self, file_1_path, file_2_path):
@@ -274,14 +275,13 @@ class General(object):
             None
         """
 
-        with open(file_1_path, 'r') as file:
+        with open(file_1_path, "r") as file:
             code = file.read()
         notebook = nbformat.v4.new_notebook()
         notebook.cells.append(nbformat.v4.new_code_cell(code))
-        with open(file_2_path, 'w') as file:
+        with open(file_2_path, "w") as file:
             nbformat.write(notebook, file)
         self.print(f"Converted {file_1_path} to {file_2_path}.", thr=3)
-
 
     def unique_list(self, input_list):
         """
@@ -296,7 +296,6 @@ class General(object):
         input_list = [x for x in input_list if not (x in seen or seen.add(x))]
         return input_list
 
-
     def save_dict_to_json(self, dictionary, file_path):
         """Save a dictionary to a JSON file."""
         for key, value in dictionary.items():
@@ -304,11 +303,13 @@ class General(object):
             try:
                 json.dumps(value)
             except (TypeError, OverflowError):
-                self.print(f"Value {value} for key '{key}' is not JSON serializable and will be skipped.", thr=1)
+                self.print(
+                    f"Value {value} for key '{key}' is not JSON serializable and will be skipped.",
+                    thr=1,
+                )
                 continue
-        with open(file_path, 'w') as json_file:
+        with open(file_path, "w") as json_file:
             json.dump(dictionary, json_file, indent=4)
-
 
     def load_dict_from_json(self, file_path, convert_values=False):
         """Load a dictionary from a JSON file."""
@@ -316,21 +317,23 @@ class General(object):
         def convert_str_to_number(value):
             """Convert string to int or float if possible."""
             try:
-                if '.' in value:
+                if "." in value:
                     return float(value)
                 else:
                     return int(value)
             except ValueError:
                 return value
-            
+
         def convert_dict_str_to_number(dictionary):
             """Convert all string keys in a dictionary to numbers."""
             if not isinstance(dictionary, dict):
                 return dictionary
-            return {convert_str_to_number(key): convert_dict_str_to_number(value) for key, value in dictionary.items()}
-        
+            return {
+                convert_str_to_number(key): convert_dict_str_to_number(value)
+                for key, value in dictionary.items()
+            }
 
-        with open(file_path, 'r') as json_file:
+        with open(file_path, "r") as json_file:
             json_dict = json.load(json_file)
         if convert_values:
             json_dict_updated = convert_dict_str_to_number(json_dict)
@@ -339,7 +342,6 @@ class General(object):
 
         return json_dict_updated
 
-
     def save_class_attributes_to_json(self, obj, file_path):
         """
         Save all attributes of a class instance to a JSON file.
@@ -347,7 +349,11 @@ class General(object):
             obj (object): The class instance whose attributes need to be saved.
             file_path (str): The path to the JSON file where attributes will be saved.
         """
-        attributes = {attr: getattr(obj, attr) for attr in dir(obj) if not callable(getattr(obj, attr)) and not attr.startswith("__")}
+        attributes = {
+            attr: getattr(obj, attr)
+            for attr in dir(obj)
+            if not callable(getattr(obj, attr)) and not attr.startswith("__")
+        }
         # Check if the attribute is JSON serializable
         serializable_attributes = {}
         for attr, value in attributes.items():
@@ -355,9 +361,10 @@ class General(object):
                 json.dumps(value)
                 serializable_attributes[attr] = value
             except (TypeError, OverflowError):
-                self.print(f"Attribute '{attr}' is not JSON serializable and will be skipped.", thr=1)
+                self.print(
+                    f"Attribute '{attr}' is not JSON serializable and will be skipped.", thr=1
+                )
         self.save_dict_to_json(serializable_attributes, file_path)
-
 
     def load_class_attributes_from_json(self, obj, file_path):
         """
@@ -371,16 +378,14 @@ class General(object):
                 setattr(obj, attr, value)
             else:
                 self.print("Attribute '{}' not found in the object {}.".format(attr, obj), thr=1)
-    
 
     def compute_hash(self, file_path):
         """Compute SHA256 hash of a file."""
         sha256 = hashlib.sha256()
-        with open(file_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096), b''):
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
                 sha256.update(chunk)
         return sha256.hexdigest()
-
 
     def sync_directories(self, base_dir_1, base_dir_2):
         """Compare and sync files from base_dir_1 to base_dir_2."""
@@ -412,8 +417,6 @@ class General(object):
         return changed_files
 
 
-
-
 @dataclass
 class GeneralParallelConfig(GeneralConfig):
     import_cupy: bool = False
@@ -421,17 +424,16 @@ class GeneralParallelConfig(GeneralConfig):
     gpu_id: int = 0
     use_torch: bool = False
 
-class GeneralParallel(General):
 
+class GeneralParallel(General):
     def __init__(self, config: GeneralParallelConfig, **overrides):
         # strict override: only allow existing fields
         super().__init__(config, **overrides)
-        
+
         if self.config.use_torch:
             self.init_device_torch()
         else:
             self.device = None
-    
 
     def init_device_torch(self):
         """
@@ -442,9 +444,8 @@ class GeneralParallel(General):
             None
         """
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.print('Torch device: {}'.format(self.device),thr=0)
-
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.print("Torch device: {}".format(self.device), thr=0)
 
     def cupy_plt_plot(self, *args, **kwargs):
         """
@@ -467,13 +468,12 @@ class GeneralParallel(General):
 
         # Apply np.sqrt to the first two arguments
         if len(args) > 0:
-            args[0] = self.numpy_transfer(args[0], dst='numpy')
+            args[0] = self.numpy_transfer(args[0], dst="numpy")
         if len(args) > 1:
-            args[1] = self.numpy_transfer(args[1], dst='numpy')
+            args[1] = self.numpy_transfer(args[1], dst="numpy")
 
         plt.plot(*args, **kwargs)
         # plt.show()
-
 
     def cupy_gpu_init(self):
         """
@@ -496,7 +496,6 @@ class GeneralParallel(General):
             self.warm_up_gpu()
             self.gpu_cpu_compare()
 
-
     def check_cupy_gpu(self, gpu_id=0):
         """
         Checks if CuPy is installed and if a specified GPU is available.
@@ -512,40 +511,43 @@ class GeneralParallel(General):
             return False
         try:
             import cupy as cp
+
             # Check if CuPy is installed
-            self.print("CuPy version: {}".format(cp.__version__),thr=0)
+            self.print("CuPy version: {}".format(cp.__version__), thr=0)
 
             num_gpus = cp.cuda.runtime.getDeviceCount()
-            self.print(f"Number of GPUs available: {num_gpus}",thr=0)
+            self.print(f"Number of GPUs available: {num_gpus}", thr=0)
 
             # Check if the GPU is available
             cp.cuda.Device(gpu_id).compute_capability
-            self.print("GPU {} is available".format(gpu_id),thr=0)
+            self.print("GPU {} is available".format(gpu_id), thr=0)
 
-            self.print('GPU {} properties: {}'.format(gpu_id, cp.cuda.runtime.getDeviceProperties(gpu_id)),thr=0)
+            self.print(
+                "GPU {} properties: {}".format(gpu_id, cp.cuda.runtime.getDeviceProperties(gpu_id)),
+                thr=0,
+            )
             return True
         except ImportError:
-            self.print("CuPy is not installed.",thr=0)
+            self.print("CuPy is not installed.", thr=0)
         except:
-            self.print("GPU is not available or CUDA is not installed correctly.",thr=0)
+            self.print("GPU is not available or CUDA is not installed correctly.", thr=0)
         return False
-
 
     def get_gpu_device(self):
         """
         Get the GPU device.
-        This method returns the GPU device if the use of CuPy is enabled. 
+        This method returns the GPU device if the use of CuPy is enabled.
         If CuPy is not enabled, it returns None.
         Returns:
             cp.cuda.Device or None: The GPU device if CuPy is enabled, otherwise None.
         """
-        
+
         if self.config.use_cupy:
             import cupy as cp
+
             return cp.cuda.Device(self.config.gpu_id)
         else:
             return None
-
 
     def check_gpu_usage(self):
         """
@@ -557,9 +559,9 @@ class GeneralParallel(General):
         """
 
         import cupy as cp
-        with cp.cuda.Device(self.config.gpu_id) as device:
-            self.print(f"Current device: {device}",0)
 
+        with cp.cuda.Device(self.config.gpu_id) as device:
+            self.print(f"Current device: {device}", 0)
 
     def print_gpu_memory(self):
         """
@@ -576,26 +578,27 @@ class GeneralParallel(General):
         """
 
         import cupy as cp
+
         with cp.cuda.Device(self.config.gpu_id):
             mempool = cp.get_default_memory_pool()
-            self.print("Used GPU memory: {} bytes".format(mempool.used_bytes()),thr=0)
-            self.print("Total GPU memory: {} bytes".format(mempool.total_bytes()),thr=0)
-
+            self.print("Used GPU memory: {} bytes".format(mempool.used_bytes()), thr=0)
+            self.print("Total GPU memory: {} bytes".format(mempool.total_bytes()), thr=0)
 
     # Initialize and warm-up
     def warm_up_gpu(self):
         """
         Warm up the GPU by performing a series of operations.
         This method initializes the GPU by performing several operations using the CuPy library.
-        It creates arrays, performs matrix multiplications, and synchronizes the GPU stream to 
-        ensure that the GPU is ready for subsequent computations. The time taken for the warmup 
+        It creates arrays, performs matrix multiplications, and synchronizes the GPU stream to
+        ensure that the GPU is ready for subsequent computations. The time taken for the warmup
         process is printed.
         Returns:
             None
         """
 
-        self.print('Starting GPU warmup.', thr=0)
+        self.print("Starting GPU warmup.", thr=0)
         import cupy as cp
+
         with cp.cuda.Device(self.config.gpu_id):
             start = time.time()
             _ = cp.array([1, 2, 3])
@@ -605,8 +608,7 @@ class GeneralParallel(General):
             _ = cp.dot(a, a)
             cp.cuda.Stream.null.synchronize()
             end = time.time()
-        self.print("GPU warmup time: {}".format(end-start),thr=0)
-
+        self.print("GPU warmup time: {}".format(end - start), thr=0)
 
     # Perform computation
     def gpu_cpu_compare(self, size=20000):
@@ -621,8 +623,9 @@ class GeneralParallel(General):
         tuple: A tuple containing the GPU computation time and CPU computation time.
         """
 
-        self.print('Starting CPU and GPU times compare.', thr=0)
+        self.print("Starting CPU and GPU times compare.", thr=0)
         import cupy as cp
+
         # Generate data
         a_cpu = numpy.random.rand(size, size).astype(float)
         b_cpu = numpy.random.rand(size, size).astype(float)
@@ -632,7 +635,7 @@ class GeneralParallel(General):
         result_cpu = numpy.dot(a_cpu, b_cpu)
         end = time.time()
         cpu_time = end - start
-        self.print("CPU time: {}".format(cpu_time),thr=0)
+        self.print("CPU time: {}".format(cpu_time), thr=0)
 
         with cp.cuda.Device(self.config.gpu_id):
             # Transfer data to GPU
@@ -649,8 +652,7 @@ class GeneralParallel(General):
 
         return gpu_time, cpu_time
 
-
-    def numpy_transfer(self, arrays, dst='numpy'):
+    def numpy_transfer(self, arrays, dst="numpy"):
         """
         Transfers arrays between NumPy and CuPy contexts.
         Parameters:
@@ -677,17 +679,15 @@ class GeneralParallel(General):
             if isinstance(arrays, list):
                 out = []
                 for i in range(len(arrays)):
-                    if dst == 'numpy' and not isinstance(arrays[i], numpy.ndarray):
+                    if dst == "numpy" and not isinstance(arrays[i], numpy.ndarray):
                         out.append(np.asnumpy(arrays[i]))
-                    elif dst == 'context' and not isinstance(arrays[i], np.ndarray):
+                    elif dst == "context" and not isinstance(arrays[i], np.ndarray):
                         out.append(np.asarray(arrays[i]))
             else:
-                if dst=='numpy' and not isinstance(arrays, numpy.ndarray):
+                if dst == "numpy" and not isinstance(arrays, numpy.ndarray):
                     out = np.asnumpy(arrays)
-                elif dst=='context' and not isinstance(arrays, np.ndarray):
+                elif dst == "context" and not isinstance(arrays, np.ndarray):
                     out = np.asarray(arrays)
         else:
             out = arrays
         return out
-
-
