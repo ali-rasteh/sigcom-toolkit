@@ -1,10 +1,10 @@
-import numpy as np
-from numpy.fft import fft, ifft, fftshift, ifftshift
-from numpy.random import randn, rand, randint, uniform, exponential
-from scipy import constants
-from scipy.signal import firwin, lfilter, freqz, welch
-import matplotlib.pyplot as plt
 from dataclasses import dataclass
+
+import matplotlib.pyplot as plt
+import numpy as np
+from numpy.fft import fft, fftshift, ifft, ifftshift
+from numpy.random import randn
+from scipy.signal import firwin, freqz, lfilter, welch
 
 from .general import General, GeneralConfig
 from .plot_utils import Plot_Utils, PlotUtilsConfig
@@ -344,15 +344,15 @@ class Signal_Utils(General):
 
         return snr
 
-    def rotation_matrix(self, dim=2, angles=[0]):
+    def rotation_matrix(self, dim=2, angles=(0,)):
         if dim == 2:
             theta = angles[0]
-            R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+            rotation_mat = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
         elif dim == 3:
-            phi = angles[0]
-            theta = angles[1]
-            # R = ???
-        return R
+            # phi = angles[0]
+            # theta = angles[1]
+            raise NotImplementedError("3D rotation matrix not implemented yet")
+        return rotation_mat
 
     def l2_norm(self, x):
         return np.linalg.norm(x)
@@ -882,10 +882,7 @@ class Signal_Utils(General):
 
         for tx_ant_id in range(n_tx_ant):
             for rx_ant_id in range(n_rx_ant):
-                if rx_same_delay:
-                    rx_id = 0
-                else:
-                    rx_id = rx_ant_id
+                rx_id = 0 if rx_same_delay else rx_ant_id
                 delay = self.extract_delay(rxtd_[rx_id], txtd_[tx_ant_id])
                 rxtd_sync[rx_ant_id, tx_ant_id], _, _, _ = self.time_adjust(
                     rxtd[rx_ant_id], txtd_[tx_ant_id], delay
@@ -1232,7 +1229,7 @@ class Signal_Utils(General):
                 # rxfd_eq[rx_ant_id] = rxfd[rx_ant_id] / H[rx_ant_id, rx_ant_id]
 
                 for i, sc in enumerate(range(sc_range[0], sc_range[1] + 1)):
-                    if not sc in range(null_sc_range[0], null_sc_range[1] + 1):
+                    if sc not in range(null_sc_range[0], null_sc_range[1] + 1):
                         rxfd_eq_[rx_ant_id, sc + n_samples // 2] = (
                             rxfd_[rx_ant_id, sc + n_samples // 2] / H_full_[rx_ant_id, rx_ant_id, i]
                         )
@@ -1240,7 +1237,7 @@ class Signal_Utils(General):
         else:
             tol = 1e-6
             for i, sc in enumerate(range(sc_range[0], sc_range[1] + 1)):
-                if not sc in range(null_sc_range[0], null_sc_range[1] + 1):
+                if sc not in range(null_sc_range[0], null_sc_range[1] + 1):
                     H_sc = H_full_[:, :, i]
                     # H_sc += tol*np.eye(H_sc.shape[0])
                     # H_sc_inv = np.linalg.pinv(H_sc)

@@ -1,8 +1,17 @@
 from dataclasses import dataclass
 import numpy as np
-from numpy.random import randint, uniform, exponential
+from numpy.random import randint, uniform, exponential, rand
+from numpy.fft import fft, fftshift
+from scipy.signal import firwin, lfilter
+import matplotlib.pyplot as plt
+import os
 
 from signal_utils import SignalUtilsConfig, Signal_Utils
+
+try:
+    import torch
+except:
+    pass
 
 
 @dataclass
@@ -112,18 +121,11 @@ class SpecSense_Utils(Signal_Utils):
         mask_mode="binary",
     ):
         self.print(
-            "Starting to generate PSD dataset with n_dataset={}, shape={}, n_sigs={}-{}, n_sigs_p_dist:{}, sig_size={}-{}, snrs={:0.3f}-{:0.3f}...".format(
-                n_dataset,
-                shape,
-                n_sigs_min,
-                n_sigs_max,
-                n_sigs_p_dist,
-                sig_size_min,
-                sig_size_max,
-                snr_range[0],
-                snr_range[1],
-            ),
-            thr=0,
+            f"Starting to generate PSD dataset with n_dataset={n_dataset}, \
+                shape={shape}, n_sigs={n_sigs_min}-{n_sigs_max}, \
+                    n_sigs_p_dist={n_sigs_p_dist}, sig_size={sig_size_min}-{sig_size_max}, \
+                        snrs={snr_range[0]:0.3f}-{snr_range[1]:0.3f}...",
+            thr=0
         )
 
         n_sigs_list = np.arange(n_sigs_min, n_sigs_max + 1)

@@ -1,6 +1,6 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy import constants
-import matplotlib.pyplot as plt
 
 try:
     import torch
@@ -9,7 +9,6 @@ except:
     pass
 
 from .signal_utils import Signal_Utils
-
 
 # TODO add config class and transfer all parameters
 
@@ -795,7 +794,7 @@ class Sim(Signal_Utils):
 
 class NF_Channel_Model(nn.Module):
     def __init__(self, n_path=1, n_rx=2, n_tx=2, n_meas=1, fc=10e9, device="cpu"):
-        super(NF_Channel_Model, self).__init__()
+        super().__init__()
 
         # Initialize learnable parameters for angles of arrival and path coefficients
         self.fc = fc
@@ -900,8 +899,8 @@ if __name__ == "__main__":
     # plot_type = 'init_est'
     plot_type = "iter_est"
 
+    from signal_utilsrfsoc import SignalUtilsRfsoc
     from sounder_configs import Configs_Class
-    from signal_utilsrfsoc import Signal_Utils_Rfsoc
 
     config = Configs_Class()
     config.channel_limit = False
@@ -932,7 +931,7 @@ if __name__ == "__main__":
     xtx = np.vstack((xsrc, xref))
 
     config.calc_params()
-    signals_inst = Signal_Utils_Rfsoc(config)
+    signals_inst = SignalUtilsRfsoc(config)
 
     # Create the simulation object and run the simulation
     sim = Sim(

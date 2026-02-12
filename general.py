@@ -625,6 +625,7 @@ class GeneralParallel(General):
 
         self.print("Starting CPU and GPU times compare.", thr=0)
         import cupy as cp
+        import numpy
 
         # Generate data
         a_cpu = numpy.random.rand(size, size).astype(float)
@@ -674,6 +675,7 @@ class GeneralParallel(General):
         - If `dst` is 'numpy' and the input arrays are not NumPy arrays, they are converted to NumPy arrays.
         - If `dst` is 'context' and the input arrays are not CuPy arrays, they are converted to CuPy arrays.
         """
+        import numpy
 
         if self.config.import_cupy:
             if isinstance(arrays, list):
