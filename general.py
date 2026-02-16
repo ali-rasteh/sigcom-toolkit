@@ -1,23 +1,20 @@
-from dataclasses import dataclass, fields, replace
-import os
-import time
-import shutil
-import nbformat
+import contextlib
 import copy
-import json
 import datetime
-import subprocess
+import hashlib
+import json
+import os
 import random
 import string
-import hashlib
+import subprocess
+import time
+from dataclasses import dataclass, fields, replace
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-try:
-    import torch
-except:
-    pass
+with contextlib.suppress(BaseException):
+    import torch # type: ignore # noqa: I001
 
 
 @dataclass
@@ -50,7 +47,7 @@ class GeneralConfig:
         """
         Update all existing parameters of this config from a JSON file. Extra keys are ignored.
         """
-        with open(file_path, "r") as json_file:
+        with open(file_path) as json_file:
             json_dict = json.load(json_file)
         return self.update_from_config(json_dict)
 
@@ -58,7 +55,7 @@ class GeneralConfig:
         return copy.deepcopy(self)
 
 
-class General(object):
+class General:
     """
     A class used to represent general utility functions and configurations.
     Attributes
@@ -73,7 +70,7 @@ class General(object):
 
         self.config = replace(config, **overrides)  # makes a new config
 
-    def create_dirs(self, dir_list=[]):
+    def create_dirs(self, dir_list=()):
         """
         Creates directories for figures, logs, and data if they do not exist.
         This method checks if the directories specified by `self.config.figs_dir`, `self.config.logs_dir`,
@@ -96,7 +93,7 @@ class General(object):
         Args:
             text (str): The text to be printed. Defaults to an empty string.
             thr (int): The threshold level for verbosity. The text will be printed only if
-                       the instance's verbose_level is greater than or equal to this value. Defaults to 0.
+            the instance's verbose_level is greater than or equal to this value. Defaults to 0.
         """
         if self.config.verbose_level >= thr:
             print(text)
@@ -116,7 +113,7 @@ class General(object):
 
         letters = string.ascii_letters + string.digits
         self.config.random_str = "".join(random.choice(letters) for i in range(length))
-        self.print("Random string for this run: {}".format(self.config.random_str), thr=0)
+        self.print(f"Random string for this run: {self.config.random_str}", thr=0)
         return self.config.random_str
 
     def print_info(self, params):
@@ -153,7 +150,7 @@ class General(object):
         Prints the attributes of the given params object.
         Args:
             params (object): An object whose attributes will be printed.
-                             Only non-callable attributes that do not start with '__' will be printed.
+            Only non-callable attributes that do not start with '__' will be printed.
         """
         if params is None:
             params = self
@@ -164,12 +161,12 @@ class General(object):
                 self.print(f"{attr} = {getattr(params, attr)}", thr=0)
         self.print("\n", thr=0)
 
-    def set_seed(self, seed=None, to_set=["numpy"]):
+    def set_seed(self, seed=None, to_set=("numpy",)):
         """
         Sets the random seed for reproducibility.
         Args:
             seed (int): The seed value to set. If None, a random seed will be generated.
-            to_set (list): A list of libraries to set the seed for. Default is ["numpy"].
+            to_set (tuple): A tuple of libraries to set the seed for. Default is ("numpy",).
         """
         if seed is None:
             seed = np.random.randint(0, 2**32 - 1)
@@ -182,15 +179,15 @@ class General(object):
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed_all(seed)
             elif lib == "cupy":
-                import cupy as cp
+                import cupy as cp   # type: ignore # noqa: I001
 
                 cp.random.seed(seed)
             elif lib == "tensorflow":
-                import tensorflow as tf
+                import tensorflow as tf # type: ignore # noqa: I001
 
                 tf.random.set_seed(seed)
             elif lib == "sionna":
-                import sionna
+                import sionna   # type: ignore # noqa: I001
 
                 sionna.phy.config.seed = seed
             else:
@@ -217,71 +214,6 @@ class General(object):
                         )
                 else:
                     self.print(f"Attribute '{attr}' not found in {obj}. Importing.", thr=6)
-
-    # Modify a parameter in the Python script
-    def modify_text_file(self, file_path, param_name, new_value):
-        """
-        Modifies the value of a specified parameter in a text file.
-        This method reads the content of the given file, searches for the specified
-        parameter, and updates its value to the new value provided. The parameter
-        is expected to be in the format 'param_name = value'.
-        Args:
-            file_path (str): The path to the text file to be modified.
-            param_name (str): The name of the parameter to be updated.
-            new_value (Any): The new value to set for the parameter.
-        Returns:
-            None
-        Raises:
-            IOError: If the file cannot be read or written.
-        """
-
-        changed = False
-
-        with open(file_path, "r") as file:
-            lines = file.readlines()
-        with open(file_path, "w") as file:
-            for line in lines:
-                if param_name in line and "=" in line:
-                    old_value = line.split("=")[1].strip()
-                    if old_value != repr(new_value):
-                        line = f"{param_name} = {repr(new_value)}\n"
-                        changed = True
-                        self.print(
-                            f"Parameter '{param_name}' updated to '{new_value}' in {file_path}.",
-                            thr=3,
-                        )
-                    else:
-                        changed = False
-                        self.print(
-                            f"Parameter '{param_name}' already set to '{new_value}' in {file_path}.",
-                            thr=5,
-                        )
-
-                file.write(line)
-
-        return changed
-
-    # Convert .py to .ipynb
-    def convert_file_format(self, file_1_path, file_2_path):
-        """
-        Converts a Python script file to a Jupyter notebook file.
-        This method reads the content of a Python script file specified by `file_1_path`,
-        creates a new Jupyter notebook with the script content as a code cell, and writes
-        the notebook to a file specified by `file_2_path`.
-        Args:
-            file_1_path (str): The path to the input Python script file.
-            file_2_path (str): The path to the output Jupyter notebook file.
-        Returns:
-            None
-        """
-
-        with open(file_1_path, "r") as file:
-            code = file.read()
-        notebook = nbformat.v4.new_notebook()
-        notebook.cells.append(nbformat.v4.new_code_cell(code))
-        with open(file_2_path, "w") as file:
-            nbformat.write(notebook, file)
-        self.print(f"Converted {file_1_path} to {file_2_path}.", thr=3)
 
     def unique_list(self, input_list):
         """
@@ -333,12 +265,9 @@ class General(object):
                 for key, value in dictionary.items()
             }
 
-        with open(file_path, "r") as json_file:
+        with open(file_path) as json_file:
             json_dict = json.load(json_file)
-        if convert_values:
-            json_dict_updated = convert_dict_str_to_number(json_dict)
-        else:
-            json_dict_updated = json_dict
+        json_dict_updated = convert_dict_str_to_number(json_dict) if convert_values else json_dict
 
         return json_dict_updated
 
@@ -377,7 +306,7 @@ class General(object):
             if hasattr(obj, attr):
                 setattr(obj, attr, value)
             else:
-                self.print("Attribute '{}' not found in the object {}.".format(attr, obj), thr=1)
+                self.print(f"Attribute '{attr}' not found in the object {obj}", thr=1)
 
     def compute_hash(self, file_path):
         """Compute SHA256 hash of a file."""
@@ -386,35 +315,6 @@ class General(object):
             for chunk in iter(lambda: f.read(4096), b""):
                 sha256.update(chunk)
         return sha256.hexdigest()
-
-    def sync_directories(self, base_dir_1, base_dir_2):
-        """Compare and sync files from base_dir_1 to base_dir_2."""
-        changed_files = []
-        for root, _, files in os.walk(base_dir_1):
-            for file in files:
-                path1 = os.path.join(root, file)
-                rel_path = os.path.relpath(path1, base_dir_1)
-                path2 = os.path.join(base_dir_2, rel_path)
-
-                # Ensure target directory exists
-                os.makedirs(os.path.dirname(path2), exist_ok=True)
-
-                if os.path.exists(path2):
-                    hash1 = self.compute_hash(path1)
-                    hash2 = self.compute_hash(path2)
-                    if hash1 != hash2:
-                        shutil.copy2(path1, path2)
-                        changed_files.append(path2)
-                        self.print(f"Overwritten: {path2}", thr=0)
-                else:
-                    shutil.copy2(path1, path2)
-                    changed_files.append(path2)
-                    self.print(f"Copied new file: {path2}", thr=0)
-
-                os.remove(path1)
-                self.print(f"Deleted (same content): {path1}", thr=5)
-
-        return changed_files
 
 
 @dataclass
@@ -445,7 +345,7 @@ class GeneralParallel(General):
         """
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.print("Torch device: {}".format(self.device), thr=0)
+        self.print(f"Torch device: {self.device}", thr=0)
 
     def cupy_plt_plot(self, *args, **kwargs):
         """
@@ -510,26 +410,26 @@ class GeneralParallel(General):
         if not self.config.import_cupy:
             return False
         try:
-            import cupy as cp
+            import cupy as cp   # type: ignore # noqa: I001
 
             # Check if CuPy is installed
-            self.print("CuPy version: {}".format(cp.__version__), thr=0)
+            self.print(f"CuPy version: {cp.__version__}", thr=0)
 
             num_gpus = cp.cuda.runtime.getDeviceCount()
             self.print(f"Number of GPUs available: {num_gpus}", thr=0)
 
             # Check if the GPU is available
-            cp.cuda.Device(gpu_id).compute_capability
-            self.print("GPU {} is available".format(gpu_id), thr=0)
+            # cp.cuda.Device(gpu_id).compute_capability
+            self.print(f"GPU {gpu_id} is available", thr=0)
 
             self.print(
-                "GPU {} properties: {}".format(gpu_id, cp.cuda.runtime.getDeviceProperties(gpu_id)),
+                f"GPU {gpu_id} properties: {cp.cuda.runtime.getDeviceProperties(gpu_id)}",
                 thr=0,
             )
             return True
         except ImportError:
             self.print("CuPy is not installed.", thr=0)
-        except:
+        except Exception:
             self.print("GPU is not available or CUDA is not installed correctly.", thr=0)
         return False
 
@@ -543,7 +443,7 @@ class GeneralParallel(General):
         """
 
         if self.config.use_cupy:
-            import cupy as cp
+            import cupy as cp   # type: ignore # noqa: I001
 
             return cp.cuda.Device(self.config.gpu_id)
         else:
@@ -558,7 +458,7 @@ class GeneralParallel(General):
             None
         """
 
-        import cupy as cp
+        import cupy as cp   # type: ignore # noqa: I001
 
         with cp.cuda.Device(self.config.gpu_id) as device:
             self.print(f"Current device: {device}", 0)
@@ -577,12 +477,12 @@ class GeneralParallel(General):
             - Total GPU memory in bytes.
         """
 
-        import cupy as cp
+        import cupy as cp   # type: ignore # noqa: I001
 
         with cp.cuda.Device(self.config.gpu_id):
             mempool = cp.get_default_memory_pool()
-            self.print("Used GPU memory: {} bytes".format(mempool.used_bytes()), thr=0)
-            self.print("Total GPU memory: {} bytes".format(mempool.total_bytes()), thr=0)
+            self.print(f"Used GPU memory: {mempool.used_bytes()} bytes", thr=0)
+            self.print(f"Total GPU memory: {mempool.total_bytes()} bytes", thr=0)
 
     # Initialize and warm-up
     def warm_up_gpu(self):
@@ -597,7 +497,7 @@ class GeneralParallel(General):
         """
 
         self.print("Starting GPU warmup.", thr=0)
-        import cupy as cp
+        import cupy as cp   # type: ignore # noqa: I001
 
         with cp.cuda.Device(self.config.gpu_id):
             start = time.time()
@@ -608,7 +508,7 @@ class GeneralParallel(General):
             _ = cp.dot(a, a)
             cp.cuda.Stream.null.synchronize()
             end = time.time()
-        self.print("GPU warmup time: {}".format(end - start), thr=0)
+        self.print(f"GPU warmup time: {end - start}", thr=0)
 
     # Perform computation
     def gpu_cpu_compare(self, size=20000):
@@ -624,7 +524,7 @@ class GeneralParallel(General):
         """
 
         self.print("Starting CPU and GPU times compare.", thr=0)
-        import cupy as cp
+        import cupy as cp   # type: ignore # noqa: I001
         import numpy
 
         # Generate data
@@ -633,10 +533,10 @@ class GeneralParallel(General):
 
         # Measure CPU time for comparison
         start = time.time()
-        result_cpu = numpy.dot(a_cpu, b_cpu)
+        _ = numpy.dot(a_cpu, b_cpu)
         end = time.time()
         cpu_time = end - start
-        self.print("CPU time: {}".format(cpu_time), thr=0)
+        self.print(f"CPU time: {cpu_time}", thr=0)
 
         with cp.cuda.Device(self.config.gpu_id):
             # Transfer data to GPU
@@ -645,11 +545,11 @@ class GeneralParallel(General):
 
             # Measure GPU time
             start = time.time()
-            result_gpu = cp.dot(a_gpu, b_gpu)
+            _ = cp.dot(a_gpu, b_gpu)
             cp.cuda.Stream.null.synchronize()  # Ensure all computations are finished
             end = time.time()
             gpu_time = end - start
-            self.print("GPU time: {}".format(gpu_time), thr=0)
+            self.print(f"GPU time: {gpu_time}", thr=0)
 
         return gpu_time, cpu_time
 

@@ -8,12 +8,12 @@ try:
 except:
     pass
 
-from .signal_utils import Signal_Utils
+from .signal_utils import SignalUtils
 
 # TODO add config class and transfer all parameters
 
 
-class RoomModel(Signal_Utils):
+class RoomModel(SignalUtils):
     def __init__(self, xlim=np.array([-10, 10]), ylim=np.array([-3, 10])):
 
         # Define the walls of the room
@@ -68,7 +68,7 @@ class RoomModel(Signal_Utils):
         return xref
 
 
-class Sim(Signal_Utils):
+class Sim(SignalUtils):
     """
     Describes the configuration of the simulation.
 
@@ -973,7 +973,7 @@ if __name__ == "__main__":
         h_ = np.expand_dims(h_, axis=3)
         h_ = np.repeat(h_, config.n_rd_rep, axis=3)
         ndly = 5000
-        sparse_est_params = signals_inst.sparse_est(
+        sparse_est_params = signals_inst.estimate_sparse_params(
             h=h_,
             g=None,
             sc_range_ch=signals_inst.sc_range_ch,

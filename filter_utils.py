@@ -1,16 +1,16 @@
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy
-from scipy.signal import lfilter, freqz
-import matplotlib.pyplot as plt
+from scipy.signal import freqz, lfilter
 
-from .signal_utils import Signal_Utils
-
+from .signal_utils import SignalUtils
 
 # TODO add config class and transfer all parameters
 
 
-class Filter_Utils(Signal_Utils):
+class Filter_Utils(SignalUtils):
     def __init__(self, config):
         super().__init__(config)
 
@@ -454,13 +454,13 @@ class Filter_Utils(Signal_Utils):
         sig_cf=None,
         spatial_sig=None,
     ):
-        self.print("Beginning to design the optimal wiener filter in mode: {}".format(mode), 2)
+        self.print(f"Beginning to design the optimal wiener filter in mode: {mode}", 2)
 
-        self.fil_wiener_single = [[None] * self.N_r for _ in range(self.N_sig)]
-        if self.N_r <= 1:
-            # if self.N_r <= 0:
-            for i in range(self.N_sig):
-                for j in range(self.N_r):
+        self.fil_wiener_single = [[None] * self.n_r for _ in range(self.n_sig)]
+        if self.n_r <= 1:
+            # if self.n_r <= 0:
+            for i in range(self.n_sig):
+                for j in range(self.n_r):
                     if mode == "sigs":
                         self.fil_wiener_single[i][j] = self.wiener_fir(
                             rx,
@@ -494,9 +494,9 @@ class Filter_Utils(Signal_Utils):
                     self.wiener_order_pos,
                     self.wiener_order_neg,
                 )
-            for i in range(self.N_sig):
-                for j in range(self.N_r):
-                    self.fil_wiener_single[i][j] = fil_wiener[i, j :: self.N_r]
+            for i in range(self.n_sig):
+                for j in range(self.n_r):
+                    self.fil_wiener_single[i][j] = fil_wiener[i, j :: self.n_r]
 
         if self.plot_level >= 3:
             # plt.figure()
@@ -509,11 +509,11 @@ class Filter_Utils(Signal_Utils):
 
             plt.figure()
             plt.subplots_adjust(wspace=0.5, hspace=1.0)
-            for rx_id in range(self.N_r):
-                plt.subplot(self.N_r, 1, rx_id + 1)
+            for rx_id in range(self.n_r):
+                plt.subplot(self.n_r, 1, rx_id + 1)
                 w, h = freqz(self.fil_wiener_single[self.sig_sel_id][rx_id], worN=self.om)
                 plt.plot(w / np.pi, self.lin_to_db(np.abs(h), mode="mag"), linewidth=1.0)
-                plt.title("Selected TX signal, and RX antenna {}".format(rx_id + 1))
+                plt.title(f"Selected TX signal, and RX antenna {rx_id + 1}")
                 if rx_id == 1:
                     plt.ylabel("Magnitude (dB)")
             plt.xlabel(r"Normalized Frequency ($\times \pi$ rad/sample)")
@@ -526,11 +526,11 @@ class Filter_Utils(Signal_Utils):
         self.print("Beginning to apply the optimal wiener filter on the rx signal.", 2)
 
         rx_dly = rx.copy()
-        self.wiener_errs = np.zeros(self.N_sig)
+        self.wiener_errs = np.zeros(self.n_sig)
 
-        for i in range(self.N_sig):
+        for i in range(self.n_sig):
             sig_filtered_wiener = np.zeros_like(self.t, dtype=complex)
-            for j in range(self.N_r):
+            for j in range(self.n_r):
                 # sig_filtered_wiener += np.convolve(rx_dly[j, :], fil_wiener_single[i][j], mode='same')
                 sig_filtered_wiener += lfilter(
                     self.fil_wiener_single[i][j], np.array([1]), rx_dly[j, :]
@@ -542,7 +542,7 @@ class Filter_Utils(Signal_Utils):
                 3,
             )
 
-            sig_filtered_wiener_adj, signal_adj, mse, err2sig_ratio = self.time_adjust(
+            sig_filtered_wiener_adj, signal_adj, mse, err2sig_ratio = self.adjust_time(
                 sig_filtered_wiener, sigs[i, :], time_delay
             )
             self.print(

@@ -1,12 +1,13 @@
+from dataclasses import dataclass
+
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Circle, FancyArrow, Wedge
 from numpy.fft import fft, fftshift
 from scipy.signal import welch
-import matplotlib.pyplot as plt
-from matplotlib.patches import Wedge, Circle, FancyArrow
 
-from dataclasses import dataclass
-from sigcom_toolkit.signal_utils import Signal_Utils
 from sigcom_toolkit.general import GeneralConfig
+from sigcom_toolkit.signal_utils import SignalUtils
 
 
 @dataclass
@@ -14,7 +15,7 @@ class PlotUtilsConfig(GeneralConfig):
     pass
 
 
-class Plot_Utils(Signal_Utils):
+class PlotUtils(SignalUtils):
     def __init__(self, config: PlotUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 
@@ -24,10 +25,7 @@ class Plot_Utils(Signal_Utils):
 
         colors = ["blue", "red", "green", "cyan", "magenta", "orange", "purple"]
 
-        if isinstance(sigs, dict):
-            sigs_dict = sigs
-        else:
-            sigs_dict = {"Signal": sigs}
+        sigs_dict = sigs if isinstance(sigs, dict) else {"Signal": sigs}
 
         plt.figure()
         plot_args = kwargs.get("plot_args", {})
@@ -47,9 +45,9 @@ class Plot_Utils(Signal_Utils):
                 x = freq
 
             if scale == "dB10":
-                sig_plot = Signal_Utils.lin_to_db(sig_plot, mode="pow")
+                sig_plot = SignalUtils.lin_to_db(sig_plot, mode="pow")
             if scale == "dB20":
-                sig_plot = Signal_Utils.lin_to_db(sig_plot, mode="mag")
+                sig_plot = SignalUtils.lin_to_db(sig_plot, mode="mag")
             elif scale == "linear":
                 pass
 
@@ -81,13 +79,13 @@ class Plot_Utils(Signal_Utils):
             ylim = kwargs["ylim"]
             if scale == "dB10":
                 ylim = (
-                    Signal_Utils.lin_to_db(ylim[0], mode="pow"),
-                    Signal_Utils.lin_to_db(ylim[1], mode="pow"),
+                    SignalUtils.lin_to_db(ylim[0], mode="pow"),
+                    SignalUtils.lin_to_db(ylim[1], mode="pow"),
                 )
             if scale == "dB20":
                 ylim = (
-                    Signal_Utils.lin_to_db(ylim[0], mode="mag"),
-                    Signal_Utils.lin_to_db(ylim[1], mode="mag"),
+                    SignalUtils.lin_to_db(ylim[0], mode="mag"),
+                    SignalUtils.lin_to_db(ylim[1], mode="mag"),
                 )
             plt.ylim(ylim)
         plt.tight_layout()
@@ -184,7 +182,7 @@ class Plot_Utils(Signal_Utils):
 
     @staticmethod
     def gauge_update_needle(ax, value, min_val=90, max_val=-90):
-        if value != np.nan and value != None:
+        if value != np.nan and value is not None:
             angle = (value - min_val) * 180 / (max_val - min_val)
         else:
             return

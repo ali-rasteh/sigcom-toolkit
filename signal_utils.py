@@ -7,7 +7,7 @@ from numpy.random import randn
 from scipy.signal import firwin, freqz, lfilter, welch
 
 from .general import General, GeneralConfig
-from .plot_utils import Plot_Utils, PlotUtilsConfig
+from .plot_utils import PlotUtils, PlotUtilsConfig
 
 
 class AoAKalmanFilter:
@@ -38,7 +38,7 @@ class AoAKalmanFilter:
     - The constant-velocity (angle-rate) model is used:
         x_k = [ angle_k, angular_rate_k ]^T
         x_{k+1} = F x_k + w_k,  z_k = H x_k + v_k
-      with F = [[1, dt], [0, 1]], H = [[1, 0]].
+        with F = [[1, dt], [0, 1]], H = [[1, 0]].
     """
 
     def __init__(self, dt, sigma_meas_deg, sigma_acc_deg=0.3, init_angle_deg=None):
@@ -196,12 +196,12 @@ class SignalUtilsConfig(GeneralConfig):
             ]
 
 
-class Signal_Utils(General):
+class SignalUtils(General):
     def __init__(self, config: SignalUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 
         plotter_config = PlotUtilsConfig().update_from_config(self.config)
-        self.plotter = Plot_Utils(plotter_config)
+        self.plotter = PlotUtils(plotter_config)
         self.kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
 
     @staticmethod
@@ -228,7 +228,7 @@ class Signal_Utils(General):
             return np.rad2deg(np.angle(np.exp(1j * np.deg2rad(a))))
 
     @staticmethod
-    def aoa_to_phase(aoa, wl=0.01, ant_d_m=[0.0]):
+    def aoa_to_phase(aoa, wl=0.01, ant_d_m=(0.0,)):
         ant_dim = len(ant_d_m)
         if ant_dim == 1:
             phase = 2 * np.pi * ant_d_m[0] / wl * np.sin(aoa)
@@ -239,7 +239,7 @@ class Signal_Utils(General):
         return phase
 
     @staticmethod
-    def phase_to_aoa(phase, wl=0.01, ant_d_m=[0.0]):
+    def phase_to_aoa(phase, wl=0.01, ant_d_m=(0.0,)):
         ant_dim = len(ant_d_m)
         if ant_dim == 1:
             aoa = np.arcsin(phase * wl / (2 * np.pi * ant_d_m[0]))
@@ -313,7 +313,7 @@ class Signal_Utils(General):
         freq, psd = welch(x, fs, nperseg=nfft)
         return (freq, psd)
 
-    def calculate_snr(self, sig_td, sig_sc_range=[0, 0]):
+    def calculate_snr(self, sig_td, sig_sc_range=(0, 0)):
         # Calculate the SNR of a signal in the frequency domain
         sig_fd = fftshift(fft(sig_td, axis=-1))
         n_sig = sig_fd.shape[0]
@@ -347,7 +347,9 @@ class Signal_Utils(General):
     def rotation_matrix(self, dim=2, angles=(0,)):
         if dim == 2:
             theta = angles[0]
-            rotation_mat = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+            rotation_mat = np.array(
+                [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
+            )
         elif dim == 3:
             # phi = angles[0]
             # theta = angles[1]
@@ -422,7 +424,7 @@ class Signal_Utils(General):
         # self.print(f'Time delay between the two signals: {delay} samples',4)
         return delay
 
-    def extract_frac_delay(self, sig_1, sig_2, sc_range=[0, 0]):
+    def extract_frac_delay(self, sig_1, sig_2, sc_range=(0, 0)):
         sig_1_f = fftshift(fft(sig_1, axis=-1))
         sig_2_f = fftshift(fft(sig_2, axis=-1))
         nfft = len(sig_1_f)
@@ -442,7 +444,7 @@ class Signal_Utils(General):
         return frac_delay
 
     @staticmethod
-    def calc_phase_offset(sig_1, sig_2, sc_range=[0, 0]):
+    def calc_phase_offset(sig_1, sig_2, sc_range=(0, 0)):
         # Return the phase offset between two signals in radians
         corr = np.correlate(sig_1, sig_2)
         max_idx = np.argmax(corr)
@@ -457,7 +459,7 @@ class Signal_Utils(General):
 
         return sig_1_adj, sig_2_adj
 
-    def time_adjust(self, sig_1, sig_2, delay):
+    def adjust_time(self, sig_1, sig_2, delay):
         """
         Adjust the time of sig_1 with respect to sig_2 based on the given delay.
 
@@ -490,7 +492,7 @@ class Signal_Utils(General):
         n_samples = sig_1.shape[0]
 
         sig_1_f = fftshift(fft(sig_1, axis=-1))
-        sig_2_f = fftshift(fft(sig_2, axis=-1))
+        # sig_2_f = fftshift(fft(sig_2, axis=-1))
         omega = np.linspace(-np.pi, np.pi, n_samples)
         sig_1_f = np.exp(1j * omega * frac_delay) * sig_1_f
         sig_1_adj = ifft(ifftshift(sig_1_f), axis=-1)
@@ -512,8 +514,8 @@ class Signal_Utils(General):
 
         return noise
 
-    def slice_size(self, slice=None):
-        if slice is None:
+    def slice_size(self, slice_obj=None):
+        if slice_obj is None:
             size = 0
         else:
             size = 1
@@ -525,7 +527,7 @@ class Signal_Utils(General):
         intersect = []
         if slice_1 is None or slice_2 is None:
             return None
-        for s1, s2 in zip(slice_1, slice_2):
+        for s1, s2 in zip(slice_1, slice_2, strict=False):
             start = max(s1.start, s2.start)
             stop = min(s1.stop, s2.stop)
             if start < stop:
@@ -541,7 +543,7 @@ class Signal_Utils(General):
             return slice_2
         elif slice_2 is None:
             return slice_1
-        for s1, s2 in zip(slice_1, slice_2):
+        for s1, s2 in zip(slice_1, slice_2, strict=False):
             start = min(s1.start, s2.start)
             stop = max(s1.stop, s2.stop)
             if start < stop:
@@ -652,14 +654,14 @@ class Signal_Utils(General):
             if modulation == "psk":
                 sym = [1, -1]
             elif modulation == "4qam":
-                sym = [I + 1j * Q for I in [-1, 1] for Q in [-1, 1]]
+                sym = [i + 1j * q for i in [-1, 1] for q in [-1, 1]]
             elif modulation == "16qam":
-                sym = [I + 1j * Q for I in [-3, -1, 1, 3] for Q in [-3, -1, 1, 3]]
+                sym = [i + 1j * q for i in [-3, -1, 1, 3] for q in [-3, -1, 1, 3]]
             elif modulation == "64qam":
                 sym = [
-                    I + 1j * Q
-                    for I in [-7, -5, -3, -1, 1, 3, 5, 7]
-                    for Q in [-7, -5, -3, -1, 1, 3, 5, 7]
+                    i + 1j * q
+                    for i in [-7, -5, -3, -1, 1, 3, 5, 7]
+                    for q in [-7, -5, -3, -1, 1, 3, 5, 7]
                 ]
             else:
                 sym = []
@@ -692,15 +694,15 @@ class Signal_Utils(General):
             wb_td = ifft(wb_fd, axis=0)
 
         elif gen_mode == "ZadoffChu":
-            prime_nums = [
-                1,
-                3,
-                5,
-                7,
-                11,
-                13,
-                17,
-            ]  # , 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
+            # prime_nums = [
+            #     1,
+            #     3,
+            #     5,
+            #     7,
+            #     11,
+            #     13,
+            #     17,
+            # ]  # , 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
             cf = self.config.nfft_tx % 2
             q = 0
             # q = 0.5
@@ -725,7 +727,7 @@ class Signal_Utils(General):
             # N_blocks = 1000
             N_cp = 256
             N_fft = 768
-            M = 16
+            # M = 16
             n_vec = np.arange(N_fft)
             x = np.exp(1j * np.pi * n_vec**2 / N_fft)
             x_cp = np.concatenate((x[-N_cp:], x))
@@ -739,7 +741,7 @@ class Signal_Utils(General):
 
         return wb_td
 
-    def create_mesh_grid(self, npoints=1000, xlim=[1, 1]):
+    def create_mesh_grid(self, npoints=1000, xlim=(1, 1)):
         # Create a set of points x uniformly distributed in the area using meshgrid
         x1 = np.linspace(0, xlim[0], npoints)
         x2 = np.linspace(0, xlim[1], npoints)
@@ -753,9 +755,9 @@ class Signal_Utils(General):
         n_sigs = sigs.shape[0]
         ant_dim = len(self.config.ant_d)
         if ant_dim == 1:
-            n_ant = n_sigs
+            n_ant = n_sigs  # noqa: F841
         elif ant_dim == 2:
-            n_ant_x = int(np.sqrt(n_sigs))
+            n_ant_x = int(np.sqrt(n_sigs))  # noqa: F841
             n_ant_y = int(np.sqrt(n_sigs))
 
         for i in range(n_sigs):
@@ -788,7 +790,7 @@ class Signal_Utils(General):
     def filter(self, sig, center_freq=0, cutoff=50e6, fil_order=1000, plot=False):
         self.print("Starting to filter the signal...", thr=2)
         filter_fir = firwin(fil_order, cutoff / self.config.fs_rx)
-        filter_fir = self.freq_shift(filter_fir, shift=center_freq, fs=self.config.fs_rx)
+        filter_fir = self.shift_freq(filter_fir, shift=center_freq, fs=self.config.fs_rx)
 
         if plot:
             plt.figure()
@@ -804,14 +806,14 @@ class Signal_Utils(General):
 
         return sig_fil
 
-    def freq_shift(self, sig, shift=0, fs=200e6):
+    def shift_freq(self, sig, shift=0, fs=200e6):
         self.print("Shifting the signal in frequency domain...", thr=2)
         t = np.arange(0, len(sig)) / fs
         sig_shift = np.exp(2 * np.pi * 1j * shift * t) * sig
 
         return sig_shift
 
-    def estimate_cfo(self, txtd, rxtd, mode="fine", sc_range=[0, 0]):
+    def estimate_cfo(self, txtd, rxtd, mode="fine", sc_range=(0, 0)):
         n_samples = min(txtd.shape[1], rxtd.shape[1])
         txtd = txtd.copy()[:, :n_samples]
         rxtd = rxtd.copy()[:, :n_samples]
@@ -821,9 +823,9 @@ class Signal_Utils(General):
         rxfd = fft(rxtd, axis=-1)
 
         n_rx_ant = rxtd.shape[0]
-        n_tx_ant = txtd.shape[0]
+        # n_tx_ant = txtd.shape[0]
 
-        cfo_est = np.zeros((n_rx_ant))
+        cfo_est = np.zeros(n_rx_ant)
 
         for tx_ant_id in range(1):
             for rx_ant_id in range(n_rx_ant):
@@ -854,7 +856,7 @@ class Signal_Utils(General):
                 else:
                     raise ValueError("Invalid CFO estimation mode: " + mode)
 
-            # self.print(f"Estimated frequency offset: {} Hz".firmat(cfo_est), 0)
+            # self.print(f"Estimated frequency offset: {cfo_est} Hz", 0)
 
         return cfo_est
 
@@ -864,14 +866,14 @@ class Signal_Utils(General):
         rxfd = fft(rxtd, axis=-1)
         if mode == "time":
             for i in range(n_rx_ant):
-                rxtd[i, :] = self.freq_shift(rxtd[i, :], shift=-1 * cfo[i], fs=self.config.fs_rx)
+                rxtd[i, :] = self.shift_freq(rxtd[i, :], shift=-1 * cfo[i], fs=self.config.fs_rx)
         elif mode == "freq":
             for i in range(n_rx_ant):
-                rxfd[i, :] = self.freq_shift(rxfd[i, :], shift=-1 * cfo[i], fs=self.config.fs_rx)
+                rxfd[i, :] = self.shift_freq(rxfd[i, :], shift=-1 * cfo[i], fs=self.config.fs_rx)
             rxtd = ifft(rxfd, axis=-1)
         return rxtd
 
-    def sync_time(self, rxtd, txtd, sc_range=[0, 0], rx_same_delay=False, sync_frac=False):
+    def sync_time(self, rxtd, txtd, sc_range=(0, 0), rx_same_delay=False, sync_frac=False):
         n_samples_rx = rxtd.shape[-1]
         n_samples = min(txtd.shape[-1], rxtd.shape[-1])
         txtd_ = txtd.copy()[:, :n_samples]
@@ -884,7 +886,7 @@ class Signal_Utils(General):
             for rx_ant_id in range(n_rx_ant):
                 rx_id = 0 if rx_same_delay else rx_ant_id
                 delay = self.extract_delay(rxtd_[rx_id], txtd_[tx_ant_id])
-                rxtd_sync[rx_ant_id, tx_ant_id], _, _, _ = self.time_adjust(
+                rxtd_sync[rx_ant_id, tx_ant_id], _, _, _ = self.adjust_time(
                     rxtd[rx_ant_id], txtd_[tx_ant_id], delay
                 )
 
@@ -901,15 +903,15 @@ class Signal_Utils(General):
 
         return rxtd_sync
 
-    def sparse_est(
+    def estimate_sparse_params(
         self,
         h,
         g=None,
-        sc_range_ch=[0, 0],
-        npaths=[1, 1],
+        sc_range_ch=(0, 0),
+        npaths=(1, 1),
         nframe_avg=1,
         ndly=10000,
-        drange=[-6, 20],
+        drange=(-6, 20),
         cv=False,
         n_ignore=-1,
     ):
@@ -921,14 +923,14 @@ class Signal_Utils(General):
             The time-domain channel estimate.
         g : np.array of shape (nfft, nrx, ntx)
             The system response in the time-domain.
-        npaths : list of ints, optional
-            Maximum number of paths to estimate in each round. Default is [1,1].
+        npaths : tuple of ints, optional
+            Maximum number of paths to estimate in each round. Default is (1,1).
         nframe_avg : int, optional
             Number of frames to average for channel estimation. Default is 1.
         ndly : int, optional
             Number of delay points to test around the peak. Default is 10000.
-        drange : list, optional
-            Range of sample delays to test around the peak. Default is [-6, 20].
+        drange : tuple, optional
+            Range of sample delays to test around the peak. Default is (-6, 20).
         cv : bool, optional
             Whether to use cross-validation to stop the path estimation. Default is True.
         Raises:
@@ -1009,7 +1011,7 @@ class Signal_Utils(General):
                 )
 
                 # Use OMP to find the sparse solution
-                coeff_est = np.zeros(npaths[0])
+                # coeff_est = np.zeros(npaths[0])
 
                 resid = H_tr.copy()
                 indices = []
@@ -1044,9 +1046,8 @@ class Signal_Utils(General):
                         mse_ts[i] = np.mean(np.abs(resid_ts) ** 2) / np.mean(np.abs(H_ts) ** 2)
 
                         # Check if path is valid
-                        if i > 0:
-                            if mse_ts[i] > cv_dec * mse_ts[i - 1]:
-                                break
+                        if i > 0 and mse_ts[i] > cv_dec * mse_ts[i - 1]:
+                            break
                         if mse_ts[i] > (1 + cv_tol) * mse_tr[i]:
                             break
 
@@ -1071,7 +1072,7 @@ class Signal_Utils(General):
 
                 # Compute the resulting sparse channel
                 H_sparse = B[:, indices].dot(coeffs_est)
-                h_sparse = np.fft.ifft(H_sparse, axis=0)
+                # h_sparse = np.fft.ifft(H_sparse, axis=0)
 
                 scale = np.mean(np.abs(G)) ** 2
                 # peaks  = np.abs(coeffs_est)**2 * scale
@@ -1099,7 +1100,7 @@ class Signal_Utils(General):
 
         return (h_tr_mat, dly_est_mat, peaks_mat, npaths_est_mat)
 
-    def channel_estimate(self, txtd, rxtd_s, sys_response=None, sc_range_ch=[0, 0], snr_est=100):
+    def estimate_channel(self, txtd, rxtd_s, sys_response=None, sc_range_ch=(0, 0), snr_est=100):
         if len(rxtd_s.shape) == 4:
             rxtd_s = np.mean(rxtd_s.copy(), axis=0)
         deconv_sys_response = sys_response is not None
@@ -1162,9 +1163,7 @@ class Signal_Utils(General):
                 h_est_full_ = h_est_full_.flatten()
 
                 sig = np.abs(h_est_full_) / np.max(np.abs(h_est_full_))
-                title = "Channel response in the time domain \n between TX antenna {} and RX antenna {}".format(
-                    tx_ant_id, rx_ant_id
-                )
+                title = f"Channel response in the time domain \n between TX antenna {tx_ant_id} and RX antenna {rx_ant_id}"
                 xlabel = "Time (s)"
                 ylabel = "Normalized Magnitude (dB)"
                 self.plotter.plot_signal(
@@ -1172,9 +1171,7 @@ class Signal_Utils(General):
                 )
 
                 sig = np.abs(fftshift(H_est_full_))
-                title = "Channel response in the frequency domain \n between TX antenna {} and RX antenna {}".format(
-                    tx_ant_id, rx_ant_id
-                )
+                title = f"Channel response in the frequency domain \n between TX antenna {tx_ant_id} and RX antenna {rx_ant_id}"
                 xlabel = "Frequency (MHz)"
                 ylabel = "Magnitude (dB)"
                 self.plotter.plot_signal(
@@ -1198,23 +1195,23 @@ class Signal_Utils(General):
 
         return h_est_full, H_est, H_est_max
 
-    def channel_equalize(
+    def equalize_channel(
         self,
         txtd,
         rxtd,
         h_full,
-        H,
-        sc_range=[0, 0],
-        sc_range_ch=[0, 0],
-        null_sc_range=[0, 0],
+        h_freq=None,
+        sc_range=(0, 0),
+        sc_range_ch=(0, 0),
+        null_sc_range=(0, 0),
         n_rx_ch_eq=1,
     ):
         n_samples = min(txtd.shape[-1], rxtd.shape[-1])
-        n_samples_ch = sc_range_ch[1] - sc_range_ch[0] + 1
+        # n_samples_ch = sc_range_ch[1] - sc_range_ch[0] + 1
         txtd = txtd.copy()[:, :n_samples]
         rxtd = rxtd.copy()[:, :n_samples]
 
-        txfd = fft(txtd, axis=-1)
+        # txfd = fft(txtd, axis=-1)
         rxfd = fft(rxtd, axis=-1)
         H_full = fft(h_full, axis=-1)
 
@@ -1255,16 +1252,10 @@ class Signal_Utils(General):
     def filter_aoa(self, rx_phase_list, rx_phase, aoa_list, aoa):
         # alpha_phase = 0.5
         # alpha_aoa = 0.5
-        alpha_phase = 1.0
-        alpha_aoa = 1.0
+        # alpha_phase = 1.0
+        # alpha_aoa = 1.0
 
-        if len(aoa_list) > 0:
-            aoa_last = aoa_list[-1]
-        else:
-            if aoa is None:
-                aoa_last = 0
-            else:
-                aoa_last = aoa
+        aoa_last = aoa_list[-1] if len(aoa_list) > 0 else 0 if aoa is None else aoa
         if aoa is None:
             aoa = aoa_last
         else:
@@ -1279,10 +1270,7 @@ class Signal_Utils(General):
         if len(rx_phase_list) > 0:
             rx_phase_last = rx_phase_list[-1]
         else:
-            if rx_phase is None:
-                rx_phase_last = 0
-            else:
-                rx_phase_last = rx_phase
+            rx_phase_last = 0 if rx_phase is None else rx_phase
         if rx_phase is None:
             rx_phase = rx_phase_last
         else:
@@ -1312,7 +1300,7 @@ class Signal_Utils(General):
     ):
         if len(rxtd.shape) == 3:
             rxtd = np.mean(rxtd.copy(), axis=0)
-        rx_phase = Signal_Utils.calc_phase_offset(rxtd[0, :], rxtd[1, :])
+        rx_phase = SignalUtils.calc_phase_offset(rxtd[0, :], rxtd[1, :])
 
         rx_phase = np.angle(np.exp(1j * rx_phase))
         rx_phase -= rx_phase_offset
@@ -1326,7 +1314,7 @@ class Signal_Utils(General):
             # angle = np.nan
             aoa = None
             rx_phase = None
-            self.print("AoA sin is out of range: {}".format(angle_sin), 1)
+            self.print(f"AoA sin is out of range: {angle_sin}", 1)
         else:
             aoa = np.arcsin(angle_sin)
 
@@ -1334,7 +1322,7 @@ class Signal_Utils(General):
 
         return rx_phase_list, aoa_list
 
-    def estimate_mimo_params(self, txtd, rxtd, fc, h_full, H, rx_phase_list, aoa_list):
+    def estimate_mimo_params(self, txtd, rxtd, fc, h_full, h_freq, rx_phase_list, aoa_list):
         # U, S, Vh = np.linalg.svd(H)
         # W_tx = Vh.conj().T
         # W_rx = U

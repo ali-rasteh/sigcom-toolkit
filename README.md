@@ -27,11 +27,11 @@ pip install -r requirements.txt
 Here is an example of how to use the library:
 
 ```python
-from .signal_utils import Signal_Utils
+from .signal_utils import SignalUtils
 
 # Example usage
 config = ...
-su_ins = Signal_Utils(config)
+su_ins = SignalUtils(config)
 su_ins.some_function()
 ```
 

@@ -1,17 +1,17 @@
-from dataclasses import dataclass
-import numpy as np
-from numpy.random import randint, uniform, exponential, rand
-from numpy.fft import fft, fftshift
-from scipy.signal import firwin, lfilter
-import matplotlib.pyplot as plt
+import contextlib
 import os
+from dataclasses import dataclass
 
-from signal_utils import SignalUtilsConfig, Signal_Utils
+import matplotlib.pyplot as plt
+import numpy as np
+from numpy.fft import fft, fftshift
+from numpy.random import exponential, rand, randint, uniform
+from scipy.signal import firwin, lfilter
 
-try:
-    import torch
-except:
-    pass
+from signal_utils import SignalUtils, SignalUtilsConfig
+
+with contextlib.suppress(BaseException):
+    import torch   # type: ignore # noqa: I001
 
 
 @dataclass
@@ -23,7 +23,7 @@ class SpecSenseUtilsConfig(SignalUtilsConfig):
     mask_mode: str = None
 
 
-class SpecSense_Utils(Signal_Utils):
+class SpecSenseUtils(SignalUtils):
     def __init__(self, config: SpecSenseUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 
@@ -31,7 +31,7 @@ class SpecSense_Utils(Signal_Utils):
         self, shape=(1000,), n_regions=1, min_size=None, max_size=None, size_sam_mode="log"
     ):
         regions = []
-        ndims = len(shape)
+        # ndims = len(shape)
         for _ in range(n_regions):
             region_slices = []
             for d, dim in enumerate(shape):
@@ -54,7 +54,7 @@ class SpecSense_Utils(Signal_Utils):
 
         return regions
 
-    def generate_random_PSD(
+    def generate_random_psd(
         self,
         shape=(1000,),
         sig_regions=None,
@@ -125,7 +125,7 @@ class SpecSense_Utils(Signal_Utils):
                 shape={shape}, n_sigs={n_sigs_min}-{n_sigs_max}, \
                     n_sigs_p_dist={n_sigs_p_dist}, sig_size={sig_size_min}-{sig_size_max}, \
                         snrs={snr_range[0]:0.3f}-{snr_range[1]:0.3f}...",
-            thr=0
+            thr=0,
         )
 
         n_sigs_list = np.arange(n_sigs_min, n_sigs_max + 1)
@@ -144,7 +144,7 @@ class SpecSense_Utils(Signal_Utils):
                 max_size=sig_size_max,
                 size_sam_mode=self.config.size_sam_mode,
             )
-            (psd, mask) = self.generate_random_PSD(
+            (psd, mask) = self.generate_random_psd(
                 shape=shape,
                 sig_regions=regions,
                 n_sigs=n_sigs,
@@ -190,7 +190,7 @@ class SpecSense_Utils(Signal_Utils):
             thr=0,
         )
 
-    def multi_arr_corr(x, arr, r, lam):
+    def multi_arr_corr(self, x, arr, r, lam):
         """
         Computes the correlation between the received signal and the expected signal
         for a batch of candidate target locations at a set of arrays
@@ -232,7 +232,7 @@ class SpecSense_Utils(Signal_Utils):
 
         return rho
 
-    def feval_torch(x, arr, r, lam):
+    def feval_torch(self, x, arr, r, lam):
         """
         Torch version of the above function.
         Computes the correlation between the received signal and the expected signal
@@ -285,8 +285,8 @@ class SpecFilterUtilsConfig(SignalUtilsConfig):
     sig_noise: float = None
     sig_sel_id: int = None
     rx_sel_id: int = None
-    N_r: int = None
-    N_sig: int = None
+    n_r: int = None
+    n_sig: int = None
     rand_params: dict = None
     cf_range: list = None
     psd_range: list = None
@@ -297,49 +297,49 @@ class SpecFilterUtilsConfig(SignalUtilsConfig):
     aoa_mode: str = None
 
 
-class SpecFilter_Utils(Signal_Utils):
+class SpecFilterUtils(SignalUtils):
     def __init__(self, config: SpecFilterUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 
     def gen_spatial_sig(
         self,
-        N_sig=1,
-        N_r=1,
-        az_range=[-np.pi, np.pi],
-        el_range=[-np.pi / 2, np.pi / 2],
+        n_sig=1,
+        n_r=1,
+        az_range=(-np.pi, np.pi),
+        el_range=(-np.pi / 2, np.pi / 2),
         mode="uniform",
     ):
         ant_dim = len(self.config.ant_d)
         if ant_dim == 1:
             if mode == "uniform":
-                az = uniform(az_range[0], az_range[1], N_sig)
+                az = uniform(az_range[0], az_range[1], n_sig)
             elif mode == "sweep":
                 az_range_t = az_range[1] - az_range[0]
-                az = np.linspace(az_range[0], az_range[1] - az_range_t / N_sig, N_sig)
+                az = np.linspace(az_range[0], az_range[1] - az_range_t / n_sig, n_sig)
             spatial_sig = np.exp(
                 2
                 * np.pi
                 * 1j
                 * self.config.ant_d[0]
                 / self.config.wl
-                * np.arange(N_r).reshape((N_r, 1))
-                * np.sin(az.reshape((1, N_sig)))
+                * np.arange(n_r).reshape((n_r, 1))
+                * np.sin(az.reshape((1, n_sig)))
             )
             return spatial_sig, [az]
         elif ant_dim == 2:
-            spatial_sig = np.zeros((N_r, N_sig)).astype(complex)
+            spatial_sig = np.zeros((n_r, n_sig)).astype(complex)
             if mode == "uniform":
-                az = uniform(az_range[0], az_range[1], N_sig)
-                el = uniform(el_range[0], el_range[1], N_sig)
+                az = uniform(az_range[0], az_range[1], n_sig)
+                el = uniform(el_range[0], el_range[1], n_sig)
             elif mode == "sweep":
                 az_range_t = az_range[1] - az_range[0]
                 el_range_t = el_range[1] - el_range[0]
-                az = np.linspace(az_range[0], az_range[1] - az_range_t / N_sig, N_sig)
-                el = np.linspace(el_range[0], el_range[1] - el_range_t / N_sig, N_sig)
+                az = np.linspace(az_range[0], az_range[1] - az_range_t / n_sig, n_sig)
+                el = np.linspace(el_range[0], el_range[1] - el_range_t / n_sig, n_sig)
             k = 2 * np.pi / self.config.wl
-            M = np.sqrt(N_r)
-            N = np.sqrt(N_r)
-            for i in range(N_sig):
+            M = np.sqrt(n_r)
+            N = np.sqrt(n_r)
+            for i in range(n_sig):
                 ax = np.exp(
                     1j * k * self.config.ant_d[0] * np.arange(M) * np.sin(el[i]) * np.cos(az[i])
                 )
@@ -353,18 +353,18 @@ class SpecFilter_Utils(Signal_Utils):
         self.print("Generating a set of random parameters.", 2)
 
         if self.config.rand_params:
-            sig_bw = uniform(self.config.bw_range[0], self.config.bw_range[1], self.config.N_sig)
+            sig_bw = uniform(self.config.bw_range[0], self.config.bw_range[1], self.config.n_sig)
             psd_range = self.config.psd_range / 1e3 / 1e6
-            sig_psd = uniform(psd_range[0], psd_range[1], self.config.N_sig)
-            sig_cf = uniform(self.config.cf_range[0], self.config.cf_range[1], self.config.N_sig)
+            sig_psd = uniform(psd_range[0], psd_range[1], self.config.n_sig)
+            sig_cf = uniform(self.config.cf_range[0], self.config.cf_range[1], self.config.n_sig)
 
             spat_sig_mag = uniform(
-                self.config.spat_sig_range[0], self.config.spat_sig_range[1], (1, self.config.N_sig)
+                self.config.spat_sig_range[0], self.config.spat_sig_range[1], (1, self.config.n_sig)
             )
-            spat_sig_mag = np.tile(spat_sig_mag, (self.config.N_r, 1))
+            spat_sig_mag = np.tile(spat_sig_mag, (self.config.n_r, 1))
             spatial_sig, aoa = self.gen_spatial_sig(
-                N_sig=self.config.N_sig,
-                N_r=self.config.N_r,
+                n_sig=self.config.n_sig,
+                n_r=self.config.n_r,
                 az_range=self.config.az_range,
                 el_range=self.config.el_range,
                 mode=self.config.aoa_mode,
@@ -372,8 +372,8 @@ class SpecFilter_Utils(Signal_Utils):
             spatial_sig = spat_sig_mag * spatial_sig
 
         else:
-            self.config.N_sig = 8
-            self.config.N_r = 4
+            self.config.n_sig = 8
+            self.config.n_r = 4
             sig_bw = np.array(
                 [
                     23412323.42206957,
@@ -470,10 +470,10 @@ class SpecFilter_Utils(Signal_Utils):
     def generate_signals(self, sig_bw, sig_psd, sig_cf, spatial_sig):
         self.print("Generating a set of signals and a rx signal.", 2)
 
-        rx = np.zeros((self.config.N_r, self.config.n_samples), dtype=complex)
-        sigs = np.zeros((self.config.N_sig, self.config.n_samples), dtype=complex)
+        rx = np.zeros((self.config.n_r, self.config.n_samples), dtype=complex)
+        sigs = np.zeros((self.config.n_sig, self.config.n_samples), dtype=complex)
 
-        for i in range(self.config.N_sig):
+        for i in range(self.config.n_sig):
             fil_sig = firwin(1001, sig_bw[i] / self.config.fs)
             # sigs[i, :] = np.exp(2 * np.pi * 1j * sig_cf[i] * t) * sig_psd[i] * np.convolve(noise, fil_sig, mode='same')
             sigs[i, :] = (
@@ -491,7 +491,7 @@ class SpecFilter_Utils(Signal_Utils):
         yvar = np.mean(np.abs(rx) ** 2, axis=1)
         wvar = yvar / self.config.snr
         self.noise_psd = np.mean(wvar / self.config.fs).astype(complex)
-        noise_rx = np.array([self.gen_noise(mode="complex") for _ in range(self.config.N_r)])
+        noise_rx = np.array([self.gen_noise(mode="complex") for _ in range(self.config.n_r)])
         noise_rx = np.sqrt(wvar[:, None] / 2) * noise_rx
         rx += noise_rx
 
@@ -501,7 +501,7 @@ class SpecFilter_Utils(Signal_Utils):
             # plt.tight_layout()
             plt.subplots_adjust(wspace=0.5, hspace=1.0)
             plt.subplot(3, 1, 1)
-            for i in range(self.config.N_sig):
+            for i in range(self.config.n_sig):
                 spectrum = fftshift(fft(sigs[i, :]))
                 spectrum = self.lin_to_db(np.abs(spectrum), mode="mag")
                 plt.plot(self.config.freq, spectrum, color=rand(3), linewidth=0.5)

@@ -30,6 +30,7 @@ select = [
 ignore = [
     "E501",  # Ignore line-length (let the formatter handle splitting lines)
     "B008",  # Ignore "function call in argument defaults" (common in FastAPI/Pydantic)
+    "N806",  # Ignore variable in function should be lowercase
 ]
 
 # 5. Unused Imports
