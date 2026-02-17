@@ -8,7 +8,7 @@ from numpy.fft import fft, fftshift
 from numpy.random import exponential, rand, randint, uniform
 from scipy.signal import firwin, lfilter
 
-from signal_utils import SignalUtils, SignalUtilsConfig
+from .signal_utils import SignalUtils, SignalUtilsConfig
 
 with contextlib.suppress(BaseException):
     import torch   # type: ignore # noqa: I001
@@ -27,8 +27,9 @@ class SpecSenseUtils(SignalUtils):
     def __init__(self, config: SpecSenseUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 
+    @staticmethod
     def generate_random_regions(
-        self, shape=(1000,), n_regions=1, min_size=None, max_size=None, size_sam_mode="log"
+        shape=(1000,), n_regions=1, min_size=None, max_size=None, size_sam_mode="log"
     ):
         regions = []
         # ndims = len(shape)

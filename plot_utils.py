@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,7 +6,8 @@ from matplotlib.patches import Circle, FancyArrow, Wedge
 from numpy.fft import fft, fftshift
 from scipy.signal import welch
 
-from sigcom_toolkit.general import GeneralConfig, General
+from .general import General, GeneralConfig
+
 
 @dataclass
 class PlotUtilsConfig(GeneralConfig):
@@ -26,7 +26,7 @@ class PlotUtils(General):
             return 20 * np.log10(x)
 
     def plot_signal(self, x=None, sigs=None, mode="time", scale="linear", plot_level=0, **kwargs):
-        if self.plot_level < plot_level:
+        if self.config.plot_level < plot_level:
             return
 
         colors = ["blue", "red", "green", "cyan", "magenta", "orange", "purple"]
