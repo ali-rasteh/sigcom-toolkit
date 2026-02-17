@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,18 +7,23 @@ from matplotlib.patches import Circle, FancyArrow, Wedge
 from numpy.fft import fft, fftshift
 from scipy.signal import welch
 
-from sigcom_toolkit.general import GeneralConfig
-from sigcom_toolkit.signal_utils import SignalUtils
-
+from sigcom_toolkit.general import GeneralConfig, General
 
 @dataclass
 class PlotUtilsConfig(GeneralConfig):
     pass
 
 
-class PlotUtils(SignalUtils):
+class PlotUtils(General):
     def __init__(self, config: PlotUtilsConfig, **overrides):
         super().__init__(config, **overrides)
+
+    @staticmethod
+    def lin_to_db(x, mode="pow"):
+        if mode == "pow":
+            return 10 * np.log10(x)
+        elif mode == "mag":
+            return 20 * np.log10(x)
 
     def plot_signal(self, x=None, sigs=None, mode="time", scale="linear", plot_level=0, **kwargs):
         if self.plot_level < plot_level:
@@ -45,9 +51,9 @@ class PlotUtils(SignalUtils):
                 x = freq
 
             if scale == "dB10":
-                sig_plot = SignalUtils.lin_to_db(sig_plot, mode="pow")
+                sig_plot = self.lin_to_db(sig_plot, mode="pow")
             if scale == "dB20":
-                sig_plot = SignalUtils.lin_to_db(sig_plot, mode="mag")
+                sig_plot = self.lin_to_db(sig_plot, mode="mag")
             elif scale == "linear":
                 pass
 
@@ -79,13 +85,13 @@ class PlotUtils(SignalUtils):
             ylim = kwargs["ylim"]
             if scale == "dB10":
                 ylim = (
-                    SignalUtils.lin_to_db(ylim[0], mode="pow"),
-                    SignalUtils.lin_to_db(ylim[1], mode="pow"),
+                    self.lin_to_db(ylim[0], mode="pow"),
+                    self.lin_to_db(ylim[1], mode="pow"),
                 )
             if scale == "dB20":
                 ylim = (
-                    SignalUtils.lin_to_db(ylim[0], mode="mag"),
-                    SignalUtils.lin_to_db(ylim[1], mode="mag"),
+                    self.lin_to_db(ylim[0], mode="mag"),
+                    self.lin_to_db(ylim[1], mode="mag"),
                 )
             plt.ylim(ylim)
         plt.tight_layout()

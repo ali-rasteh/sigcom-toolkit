@@ -26,6 +26,9 @@ class GeneralConfig:
     data_dir: str = "./data/"
     random_str: str = ""
 
+    def __post_init__(self):
+        pass
+
     def update_from_config(self, config):
         """
         Update all existing parameters of this config from another config

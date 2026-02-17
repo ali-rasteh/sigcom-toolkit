@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +8,7 @@ from numpy.random import randn
 from scipy.signal import firwin, freqz, lfilter, welch
 
 from .general import General, GeneralConfig
+
 from .plot_utils import PlotUtils, PlotUtilsConfig
 
 
@@ -96,7 +98,7 @@ class SignalUtilsConfig(GeneralConfig):
     n_samples_tx: int = None
     n_samples_rx: int = None
     n_samples_trx: int = None
-    sc_range_ch: list = None
+    sc_range_ch: tuple = None
     n_samples_ch: int = None
     nfft: int = None
     nfft_tx: int = None
@@ -104,9 +106,9 @@ class SignalUtilsConfig(GeneralConfig):
     nfft_trx: int = None
     nfft_ch: int = None
 
-    ant_d: list = None
+    ant_d: tuple = None
     wl: float = None
-    steer_rad: list = None
+    steer_rad: tuple = None
 
     t: np.ndarray = None
     t_tx: np.ndarray = None

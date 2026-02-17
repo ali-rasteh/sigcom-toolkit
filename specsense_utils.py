@@ -288,12 +288,12 @@ class SpecFilterUtilsConfig(SignalUtilsConfig):
     n_r: int = None
     n_sig: int = None
     rand_params: dict = None
-    cf_range: list = None
-    psd_range: list = None
-    bw_range: list = None
-    spat_sig_range: list = None
-    az_range: list = None
-    el_range: list = None
+    cf_range: tuple = None
+    psd_range: tuple = None
+    bw_range: tuple = None
+    spat_sig_range: tuple = None
+    az_range: tuple = None
+    el_range: tuple = None
     aoa_mode: str = None
 
 
