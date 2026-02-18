@@ -71,7 +71,8 @@ class General:
         if unknown:
             raise TypeError(f"Unknown parameter(s): {sorted(unknown)}")
 
-        self.config = replace(config, **overrides)  # makes a new config
+        # self.config = replace(config, **overrides)  # makes a new config
+        self.config = config.update_from_config(overrides)  # updates the original config
 
     def create_dirs(self, dir_list=()):
         """
