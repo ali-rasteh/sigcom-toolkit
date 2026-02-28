@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,7 +7,6 @@ from numpy.random import randn
 from scipy.signal import firwin, freqz, lfilter, welch
 
 from .general import General, GeneralConfig
-
 from .plot_utils import PlotUtils, PlotUtilsConfig
 
 

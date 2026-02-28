@@ -899,7 +899,7 @@ if __name__ == "__main__":
     # plot_type = 'init_est'
     plot_type = "iter_est"
 
-    from signal_utilsrfsoc import SignalUtilsRfsoc
+    from signal_utils_rfsoc import SignalUtilsRfsoc
     from sounder_configs import Configs_Class
 
     config = Configs_Class()
