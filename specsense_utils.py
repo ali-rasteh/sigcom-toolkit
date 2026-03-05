@@ -14,7 +14,7 @@ with contextlib.suppress(BaseException):
     import torch   # type: ignore # noqa: I001
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SpecSenseUtilsConfig(SignalUtilsConfig):
     n_sigs_max: int = None
     size_sam_mode: str = None
@@ -280,7 +280,7 @@ class SpecSenseUtils(SignalUtils):
         return sig_fil
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SpecFilterUtilsConfig(SignalUtilsConfig):
     snr: float = None
     sig_noise: float = None

@@ -9,7 +9,7 @@ from scipy.signal import welch
 from .general import General, GeneralConfig
 
 
-@dataclass
+@dataclass(kw_only=True)
 class PlotUtilsConfig(GeneralConfig):
     pass
 

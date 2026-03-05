@@ -17,7 +17,7 @@ with contextlib.suppress(BaseException):
     import torch # type: ignore # noqa: I001
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GeneralConfig:
     verbose_level: int = 5
     plot_level: int = 5
@@ -321,7 +321,7 @@ class General:
         return sha256.hexdigest()
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GeneralParallelConfig(GeneralConfig):
     import_cupy: bool = False
     use_cupy: bool = False

@@ -85,7 +85,7 @@ class AoAKalmanFilter:
         return float(np.rad2deg(self.x[0]))
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SignalUtilsConfig(GeneralConfig):
     fc: float = None
     fs: float = 1e9
