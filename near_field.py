@@ -3,9 +3,9 @@ import numpy as np
 from scipy import constants
 
 try:
-    import torch
-    from torch import nn, optim
-except:
+    import torch  # type: ignore
+    from torch import nn, optim  # type: ignore
+except Exception:
     pass
 
 from .signal_utils import SignalUtils
