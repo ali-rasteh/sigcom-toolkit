@@ -57,6 +57,9 @@ class GeneralConfig:
     def copy(self):
         return copy.deepcopy(self)
 
+    def __str__(self):
+        return f"{self.__class__.__name__}({', '.join(f'{f.name}={getattr(self, f.name)}' for f in fields(self))})"
+
 
 class General:
     """
@@ -73,6 +76,18 @@ class General:
 
         # self.config = replace(config, **overrides)  # makes a new config
         self.config = config.update_from_config(overrides)  # updates the original config
+        self.print(f"Initializing {self.__class__.__name__}", thr=0)
+
+    # def __init_subclass__(cls, **kwargs):
+    #     super().__init_subclass__(**kwargs)
+
+    #     orig_init = cls.__init__
+
+    #     def new_init(self, *args, **kwargs):
+    #         orig_init(self, *args, **kwargs)   # run subclass init first
+    #         print(f"{cls.__name__} instantiated")
+
+    #     cls.__init__ = new_init
 
     def create_dirs(self, dir_list=()):
         """

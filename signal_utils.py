@@ -765,7 +765,6 @@ class SignalUtils(General):
                 phase_shift = (
                     2 * np.pi * self.config.ant_d[0] * np.sin(self.config.steer_rad[0]) * i
                 )
-                print("phase_shift: ", phase_shift)
             elif ant_dim == 2:
                 m = i // n_ant_y
                 n = i % n_ant_y
@@ -896,7 +895,6 @@ class SignalUtils(General):
                         txtd_[tx_ant_id],
                         sc_range=sc_range,
                     )
-                    # print(f"Fractional delay: {frac_delay}")
                     rxtd_sync[rx_ant_id, tx_ant_id], _ = self.adjust_frac_delay(
                         rxtd_sync[rx_ant_id, tx_ant_id], txtd_[tx_ant_id], frac_delay
                     )
@@ -1339,6 +1337,5 @@ class SignalUtils(General):
             rx_phase_offset=self.rx_phase_offset,
             rx_delay_offset=self.rx_delay_offset,
         )
-        # print("AoA: {} deg".format(np.rad2deg(aoa)))
 
         return rx_phase_list, aoa_list
