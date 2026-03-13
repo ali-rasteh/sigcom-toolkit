@@ -388,10 +388,13 @@ class SignalUtils(General):
         cros_corr = np.mean(sig_1 * np.conj(padded_sig_2))
         return cros_corr
 
-    def integrate_signal(self, signal, n_samples=1024):
-        n_ant = signal.shape[0]
-        signal = signal.reshape(n_ant, -1, n_samples)
-        signal = np.mean(signal, axis=1)
+    def integrate_signal(self, signal, n_samples=1024, dim=-1):
+        if dim != -1:
+            signal = np.swapaxes(signal, dim, -1)
+        signal = signal.reshape(n_samples, -1) if signal.ndim == 1 else signal.reshape(signal.shape[:-1] + (n_samples, -1))
+        signal = np.mean(signal, axis=-1)
+        if dim != -1:
+            signal = np.swapaxes(signal, dim, -1)
 
         return signal
 
@@ -752,37 +755,37 @@ class SignalUtils(General):
 
     def beam_form(self, sigs):
         sigs_bf = sigs.copy()
-        n_sigs = sigs.shape[0]
+        n_frames = sigs.shape[0]
+        n_ant = sigs.shape[1]
         ant_dim = len(self.config.ant_d)
-        if ant_dim == 1:
-            n_ant = n_sigs  # noqa: F841
-        elif ant_dim == 2:
-            n_ant_x = int(np.sqrt(n_sigs))  # noqa: F841
-            n_ant_y = int(np.sqrt(n_sigs))
+        if ant_dim == 2:
+            n_ant_x = int(np.sqrt(n_ant))  # noqa: F841
+            n_ant_y = int(np.sqrt(n_ant))
 
-        for i in range(n_sigs):
-            if ant_dim == 1:
-                phase_shift = (
-                    2 * np.pi * self.config.ant_d[0] * np.sin(self.config.steer_rad[0]) * i
-                )
-            elif ant_dim == 2:
-                m = i // n_ant_y
-                n = i % n_ant_y
-                phase_shift = (
-                    2
-                    * np.pi
-                    * (
-                        m
-                        * self.config.ant_d[0]
-                        * np.sin(self.config.steer_rad[1])
-                        * np.cos(self.config.steer_rad[0])
-                        + n
-                        * self.config.ant_d[1]
-                        * np.sin(self.config.steer_rad[1])
-                        * np.sin(self.config.steer_rad[0])
+        for j in range(n_frames):
+            for i in range(n_ant):
+                if ant_dim == 1:
+                    phase_shift = (
+                        2 * np.pi * self.config.ant_d[0] * np.sin(self.config.steer_rad[0]) * i
                     )
-                )
-            sigs_bf[i, :] = np.exp(1j * phase_shift) * sigs[i, :]
+                elif ant_dim == 2:
+                    m = i // n_ant_y
+                    n = i % n_ant_y
+                    phase_shift = (
+                        2
+                        * np.pi
+                        * (
+                            m
+                            * self.config.ant_d[0]
+                            * np.sin(self.config.steer_rad[1])
+                            * np.cos(self.config.steer_rad[0])
+                            + n
+                            * self.config.ant_d[1]
+                            * np.sin(self.config.steer_rad[1])
+                            * np.sin(self.config.steer_rad[0])
+                        )
+                    )
+                sigs_bf[j, i, :] = np.exp(1j * phase_shift) * sigs[j, i, :]
 
         return sigs_bf
 
@@ -813,16 +816,16 @@ class SignalUtils(General):
         return sig_shift
 
     def estimate_cfo(self, txtd, rxtd, mode="fine", sc_range=(0, 0)):
-        n_samples = min(txtd.shape[1], rxtd.shape[1])
+        n_samples = min(txtd.shape[-1], rxtd.shape[-1])
+        n_rx_ant = rxtd.shape[1]
+        # n_tx_ant = txtd.shape[1]
+
         txtd = txtd.copy()[:, :n_samples]
         rxtd = rxtd.copy()[:, :n_samples]
 
         # h_est_full = h_est_full.copy()
         txfd = fft(txtd, axis=-1)
         rxfd = fft(rxtd, axis=-1)
-
-        n_rx_ant = rxtd.shape[0]
-        # n_tx_ant = txtd.shape[0]
 
         cfo_est = np.zeros(n_rx_ant)
 
@@ -886,7 +889,7 @@ class SignalUtils(General):
                 rx_id = 0 if rx_same_delay else rx_ant_id
                 delay = self.extract_delay(rxtd_[rx_id], txtd_[tx_ant_id])
                 rxtd_sync[rx_ant_id, tx_ant_id], _, _, _ = self.adjust_time(
-                    rxtd[rx_ant_id], txtd_[tx_ant_id], delay
+                    rxtd_[rx_ant_id], txtd_[tx_ant_id], delay
                 )
 
                 if sync_frac:
@@ -1099,8 +1102,6 @@ class SignalUtils(General):
         return (h_tr_mat, dly_est_mat, peaks_mat, npaths_est_mat)
 
     def estimate_channel(self, txtd, rxtd_s, sys_response=None, sc_range_ch=(0, 0), snr_est=100):
-        if len(rxtd_s.shape) == 4:
-            rxtd_s = np.mean(rxtd_s.copy(), axis=0)
         deconv_sys_response = sys_response is not None
 
         n_samples = min(txtd.shape[-1], rxtd_s.shape[-1])
@@ -1185,20 +1186,19 @@ class SignalUtils(General):
         # H_est = np.linalg.pinv(txfd.T) @ rxfd.T
         # H_est = H_est.T
         # H_est = rxfd @ np.linalg.pinv(txfd)
-        H_est = np.mean(H_est_full, axis=-1)
+        # H_est = np.mean(H_est_full, axis=-1)
 
-        time_pow = np.sum(np.abs(H_est_full) ** 2, axis=(0, 1))
-        idx_max = np.argmax(time_pow)
-        H_est_max = H_est_full[:, :, idx_max]
+        # time_pow = np.sum(np.abs(H_est_full) ** 2, axis=(0, 1))
+        # idx_max = np.argmax(time_pow)
+        # H_est_max = H_est_full[:, :, idx_max]
 
-        return h_est_full, H_est, H_est_max
+        return h_est_full
 
     def equalize_channel(
         self,
         txtd,
         rxtd,
         h_full,
-        h_freq=None,
         sc_range=(0, 0),
         sc_range_ch=(0, 0),
         null_sc_range=(0, 0),
@@ -1287,9 +1287,7 @@ class SignalUtils(General):
 
     def angle_of_arrival(
         self,
-        txtd,
         rxtd,
-        h_full,
         rx_phase_list,
         aoa_list,
         fc=1e9,
@@ -1320,22 +1318,3 @@ class SignalUtils(General):
 
         return rx_phase_list, aoa_list
 
-    def estimate_mimo_params(self, txtd, rxtd, fc, h_full, h_freq, rx_phase_list, aoa_list):
-        # U, S, Vh = np.linalg.svd(H)
-        # W_tx = Vh.conj().T
-        # W_rx = U
-        # rx_phase = np.mean(np.angle(U[0,:]*np.conj(U[1,:])))
-        # tx_phase = np.mean(np.angle(Vh[:,0]*np.conj(Vh[:,1])))
-
-        rx_phase_list, aoa_list = self.angle_of_arrival(
-            txtd=txtd,
-            rxtd=rxtd,
-            h_full=h_full,
-            rx_phase_list=rx_phase_list,
-            aoa_list=aoa_list,
-            fc=fc,
-            rx_phase_offset=self.rx_phase_offset,
-            rx_delay_offset=self.rx_delay_offset,
-        )
-
-        return rx_phase_list, aoa_list
