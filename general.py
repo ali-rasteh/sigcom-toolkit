@@ -76,6 +76,7 @@ class General:
 
         # self.config = replace(config, **overrides)  # makes a new config
         self.config = config.update_from_config(overrides)  # updates the original config
+        self.methods_suffix = None
         self.print(f"Initializing {self.__class__.__name__}", thr=0)
 
     # def __init_subclass__(cls, **kwargs):
@@ -88,6 +89,20 @@ class General:
     #         print(f"{cls.__name__} instantiated")
 
     #     cls.__init__ = new_init
+
+    def __getattr__(self, name):
+        # Check if the requested missing method ends with our specific suffix
+        suffix = self.methods_suffix
+        if suffix and name.endswith(suffix):
+            # Extract the original method name
+            orig_name = name[:-len(suffix)]
+
+            # Fetch and return the original method.
+            # If the original method doesn't exist, this naturally raises an AttributeError.
+            return getattr(self, orig_name)
+
+        # If the method doesn't have the suffix and wasn't found, raise the standard error
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def create_dirs(self, dir_list=()):
         """
