@@ -76,7 +76,7 @@ class General:
 
         # self.config = replace(config, **overrides)  # makes a new config
         self.config = config.update_from_config(overrides)  # updates the original config
-        self.methods_suffix = None
+        self.methods_suffix_list = None
         self.print(f"Initializing {self.__class__.__name__}", thr=0)
 
     # def __init_subclass__(cls, **kwargs):
@@ -91,9 +91,13 @@ class General:
     #     cls.__init__ = new_init
 
     def __getattr__(self, name):
+        if name in self.__dict__:  # Check if the attribute exists in the instance dictionary
+            return self.__dict__[name]
+
         # Check if the requested missing method ends with our specific suffix
-        suffix = self.methods_suffix
-        if suffix and name.endswith(suffix):
+        suffix_list = self.methods_suffix_list
+        if suffix_list and any(name.endswith(s) for s in suffix_list):
+            suffix = next(s for s in suffix_list if name.endswith(s))
             # Extract the original method name
             orig_name = name[:-len(suffix)]
 
