@@ -971,7 +971,8 @@ if __name__ == "__main__":
     for i in range(h.shape[-1]):
         h_ = h[:, :, :, i].copy()
         h_ = np.expand_dims(h_, axis=3)
-        h_ = np.repeat(h_, config.n_rd_rep, axis=3)
+        n_rd_rep = 1
+        h_ = np.repeat(h_, n_rd_rep, axis=3)
         ndly = 5000
         sparse_est_params = signals_inst.estimate_sparse_params(
             h=h_,
