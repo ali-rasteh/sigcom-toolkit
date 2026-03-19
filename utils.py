@@ -62,14 +62,12 @@ def get_visible_points(width, length, ref_x, ref_y, direction_deg, alpha_deg, d)
 
     return visible_points
 
-def get_viewing_angle_range(width, length, ref_x, ref_y, obj_x, obj_y, alpha_deg):
+def get_viewing_angle_range(ref_x, ref_y, obj_x, obj_y, alpha_deg):
     """
     Calculates the range of central direction angles at a reference point
     required to see an object point in the room.
 
     Parameters:
-    - width (float): The width of the room.
-    - length (float): The length of the room.
     - ref_x, ref_y (float): Coordinates of the reference point.
     - obj_x, obj_y (float): Coordinates of the target object point.
     - alpha_deg (float): The field of view spread (+/- degrees).
@@ -77,12 +75,6 @@ def get_viewing_angle_range(width, length, ref_x, ref_y, obj_x, obj_y, alpha_deg
     Returns:
     - A tuple: (min_angle, max_angle, exact_angle) in degrees.
     """
-
-    # Check if both points are inside the room
-    if not (-width <= ref_x <= 0 and -length <= ref_y <= 0):
-        raise ValueError("The reference point is outside the bounds of the room.")
-    if not (-width <= obj_x <= 0 and -length <= obj_y <= 0):
-        raise ValueError("The object point is outside the bounds of the room.")
 
     # Calculate differences in coordinates
     dx = obj_x - ref_x
