@@ -55,7 +55,7 @@ class AoAKalmanFilter:
         self.initialized = False
         self.x = None
         if init_angle_deg is not None:
-            self.reset(init_angle_deg)
+            self.reset(np.deg2rad(init_angle_deg))
 
     def wrap_angle_rad(self, a):
         return (a + np.pi) % (2 * np.pi) - np.pi
@@ -63,16 +63,16 @@ class AoAKalmanFilter:
     def wrap_angle_deg(self, a):
         return (a + 180.0) % 360.0 - 180.0
 
-    def reset(self, init_angle_deg):
-        self.x = np.array([np.deg2rad(init_angle_deg), 0.0])
+    def reset(self, init_angle):
+        self.x = np.array([init_angle, 0.0])
         self.x[0] = self.wrap_angle_rad(self.x[0])
         self.P = np.diag([np.deg2rad(30.0) ** 2, np.deg2rad(2.0) ** 2])
         self.initialized = True
 
     def step(self, angles_deg_1s):
-        z_list = np.deg2rad(np.asarray(angles_deg_1s, dtype=float))
+        z_list = np.asarray(angles_deg_1s, dtype=float)
         if not self.initialized:
-            self.reset(np.rad2deg(z_list[0]))
+            self.reset(z_list[0])
         for z in z_list:
             self.x = self.F @ self.x
             self.P = self.F @ self.P @ self.F.T + self.Q
@@ -82,7 +82,7 @@ class AoAKalmanFilter:
             self.x = self.x + K * innov
             self.P = (np.eye(2) - K[:, None] @ self.H) @ self.P
             self.x[0] = self.wrap_angle_rad(self.x[0])
-        return float(np.rad2deg(self.x[0]))
+        return float(self.x[0])
 
 
 @dataclass(kw_only=True)
@@ -202,7 +202,6 @@ class SignalUtils(General):
 
         plotter_config = PlotUtilsConfig().update_from_config(self.config)
         self.plotter = PlotUtils(plotter_config)
-        self.kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
 
     @staticmethod
     def lin_to_db(x, mode="pow"):
@@ -1253,6 +1252,9 @@ class SignalUtils(General):
         # alpha_phase = 1.0
         # alpha_aoa = 1.0
 
+        if not getattr(self, "aoa_kalman_filter", None):
+            self.aoa_kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
+
         aoa_last = aoa_list[-1] if len(aoa_list) > 0 else 0 if aoa is None else aoa
         if aoa is None:
             aoa = aoa_last
@@ -1261,9 +1263,9 @@ class SignalUtils(General):
             # Use Kalman filter to smooth the AOA gauge signal
             if not aoa_list:
                 aoa_list.append(aoa)
-            window_deg = np.rad2deg(aoa_list[-10:])
-            aoa = self.wrap_angle(self.kalman_filter.step(window_deg), mode="deg")
-            aoa = np.deg2rad(aoa)
+            window = aoa_list[-10:]
+            aoa = self.aoa_kalman_filter.step(window)
+            aoa = self.wrap_angle(aoa, mode="rad")
 
         if len(rx_phase_list) > 0:
             rx_phase_last = rx_phase_list[-1]
@@ -1276,9 +1278,9 @@ class SignalUtils(General):
             # Use Kalman filter to smooth the RX phase signal
             if not rx_phase_list:
                 rx_phase_list.append(rx_phase)
-            window_deg = np.rad2deg(rx_phase_list[-10:])
-            rx_phase = self.wrap_angle(self.kalman_filter.step(window_deg), mode="deg")
-            rx_phase = np.deg2rad(rx_phase)
+            window = rx_phase_list[-10:]
+            rx_phase = self.aoa_kalman_filter.step(window)
+            rx_phase = self.wrap_angle(rx_phase, mode="rad")
 
         rx_phase_list.append(rx_phase)
         aoa_list.append(aoa)
@@ -1314,7 +1316,9 @@ class SignalUtils(General):
         else:
             aoa = np.arcsin(angle_sin)
 
-        rx_phase_list, aoa_list = self.filter_aoa(rx_phase_list, rx_phase, aoa_list, aoa)
+        # rx_phase_list, aoa_list = self.filter_aoa(rx_phase_list, rx_phase, aoa_list, aoa)
+        rx_phase_list.append(rx_phase)
+        aoa_list.append(aoa)
 
         return rx_phase_list, aoa_list
 
