@@ -1,6 +1,7 @@
 import contextlib
 import copy
 import datetime
+from enum import Enum
 import hashlib
 import json
 import os
@@ -17,6 +18,12 @@ with contextlib.suppress(BaseException):
     import torch # type: ignore # noqa: I001
 
 
+class DebugMode(Enum):
+    OFF = 0
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
 @dataclass(kw_only=True)
 class GeneralConfig:
     verbose_level: int = 5
@@ -25,6 +32,7 @@ class GeneralConfig:
     logs_dir: str = "./logs/"
     data_dir: str = "./data/"
     random_str: str = ""
+    debug_mode: DebugMode = DebugMode.OFF
 
     def __post_init__(self):
         pass
