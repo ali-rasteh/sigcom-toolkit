@@ -312,7 +312,7 @@ class SignalUtils(General):
         freq, psd = welch(x, fs, nperseg=nfft)
         return (freq, psd)
 
-    def calculate_snr(self, sig_td, sig_sc_range=(0, 0)):
+    def calculate_snr(self, sig_td, sc_range_sig=((0, 0),)):
         # Calculate the SNR of a signal in the frequency domain
         sig_fd = fftshift(fft(sig_td, axis=-1))
         n_sig = sig_fd.shape[0]
@@ -322,15 +322,27 @@ class SignalUtils(General):
         # Calculate the power of the signal
         for i in range(n_sig):
             sig_fd_i = sig_fd[i, :]
-            sig_and_noise = sig_fd_i[
-                (sig_sc_range[0] + nfft // 2) : (sig_sc_range[1] + nfft // 2 + 1)
-            ]
+            sig_and_noise = []
+            for item in sc_range_sig:
+                sig_and_noise.append(
+                    sig_fd_i[
+                    (item[0] + nfft // 2) : (item[1] + nfft // 2 + 1)
+                ])
+            sig_and_noise = np.concatenate(sig_and_noise, axis=-1)
             sig_and_noise_power = np.mean(np.abs(sig_and_noise) ** 2)
 
             # Calculate the noise power
-            noise_1 = sig_fd_i[: sig_sc_range[0] + nfft // 2]
-            noise_2 = sig_fd_i[sig_sc_range[1] + nfft // 2 + 1 :]
-            noise = np.concatenate((noise_1, noise_2), axis=-1)
+            noise = []
+            for index, item in enumerate(sc_range_sig):
+                if index == 0:
+                    noise.append(sig_fd_i[: item[0] + nfft // 2])
+                if index < len(sc_range_sig) - 1:
+                    next_item = sc_range_sig[index + 1]
+                    noise.append(sig_fd_i[item[1] + nfft // 2 + 1 : next_item[0] + nfft // 2])
+                if index == len(sc_range_sig) - 1:
+                    noise.append(sig_fd_i[item[1] + nfft // 2 + 1 :])
+
+            noise = np.concatenate(noise, axis=-1)
             noise_power = np.mean(np.abs(noise) ** 2)
 
             # Calculate the SNR
@@ -390,7 +402,11 @@ class SignalUtils(General):
     def integrate_signal(self, signal, n_samples=1024, dim=-1):
         if dim != -1:
             signal = np.swapaxes(signal, dim, -1)
-        signal = signal.reshape(n_samples, -1) if signal.ndim == 1 else signal.reshape(signal.shape[:-1] + (n_samples, -1))
+        signal = (
+            signal.reshape(n_samples, -1)
+            if signal.ndim == 1
+            else signal.reshape(signal.shape[:-1] + (n_samples, -1))
+        )
         signal = np.mean(signal, axis=-1)
         if dim != -1:
             signal = np.swapaxes(signal, dim, -1)
@@ -594,13 +610,13 @@ class SignalUtils(General):
 
         return (det_rate, missed, false_alarm)
 
-    def generate_tone(self, freq_mode="sc", sc=None, f=None, sig_mode="tone_2", gen_mode="fft"):
-        if freq_mode == "sc":
+    def generate_tone(self, sc=None, f=None, sig_mode="tone_2", gen_mode="fft"):
+        if sc is not None:
             f = sc * self.config.fs_tx / self.config.nfft_tx
-        elif freq_mode == "freq":
+        elif f is not None:
             sc = int(np.round((f) * self.config.nfft_tx / self.config.fs_tx))
         else:
-            raise ValueError("Invalid frequency mode: " + freq_mode)
+            raise ValueError("Either sc or f must be provided")
 
         if gen_mode == "time":
             wt = np.multiply(2 * np.pi * f, self.t_tx)
@@ -631,117 +647,97 @@ class SignalUtils(General):
 
     def generate_wideband(
         self,
-        bw_mode="sc",
-        sc_range=None,
-        bw_range=None,
-        wb_null_sc=0,
+        sc_ranges=None,
+        bw_ranges=None,
         modulation="4qam",
-        sig_mode="wideband",
         gen_mode="fft",
         seed=100,
     ):
-        if bw_mode == "sc":
-            bw_range = [
-                sc_range[0] * self.config.fs_tx / self.config.nfft_tx,
-                sc_range[1] * self.config.fs_tx / self.config.nfft_tx,
+        if sc_ranges is not None:
+            bw_ranges = [
+                [
+                    sc_range[0] * self.config.fs_tx / self.config.nfft_tx,
+                    sc_range[1] * self.config.fs_tx / self.config.nfft_tx,
+                ]
+                for sc_range in sc_ranges
             ]
-        elif bw_mode == "freq":
-            sc_range = [
-                int(np.round(bw_range[0] * self.config.nfft_tx / self.config.fs_tx)),
-                int(np.round(bw_range[1] * self.config.nfft_tx / self.config.fs_tx)),
+        elif bw_ranges is not None:
+            sc_ranges = [
+                [
+                    int(np.round(bw_range[0] * self.config.nfft_tx / self.config.fs_tx)),
+                    int(np.round(bw_range[1] * self.config.nfft_tx / self.config.fs_tx)),
+                ]
+                for bw_range in bw_ranges
             ]
+        else:
+            raise ValueError("Either sc_ranges or bw_ranges must be provided")
 
         np.random.seed(seed)
-        if gen_mode == "fft":
-            if modulation == "psk":
-                sym = [1, -1]
-            elif modulation == "4qam":
-                sym = [i + 1j * q for i in [-1, 1] for q in [-1, 1]]
-            elif modulation == "16qam":
-                sym = [i + 1j * q for i in [-3, -1, 1, 3] for q in [-3, -1, 1, 3]]
-            elif modulation == "64qam":
-                sym = [
-                    i + 1j * q
-                    for i in [-7, -5, -3, -1, 1, 3, 5, 7]
-                    for q in [-7, -5, -3, -1, 1, 3, 5, 7]
-                ]
+        sig_fd = None
+        for sc_range in sc_ranges:
+            if gen_mode == "fft":
+                if modulation == "psk":
+                    sym = [1, -1]
+                elif modulation == "4qam":
+                    sym = [i + 1j * q for i in [-1, 1] for q in [-1, 1]]
+                elif modulation == "16qam":
+                    sym = [i + 1j * q for i in [-3, -1, 1, 3] for q in [-3, -1, 1, 3]]
+                elif modulation == "64qam":
+                    sym = [
+                        i + 1j * q
+                        for i in [-7, -5, -3, -1, 1, 3, 5, 7]
+                        for q in [-7, -5, -3, -1, 1, 3, 5, 7]
+                    ]
+                else:
+                    sym = []
+
+                # Create the wideband sequence in frequency-domain
+                wb_fd = np.zeros((self.config.nfft_tx,), dtype="complex")
+                if len(sym) > 0:
+                    wb_fd[
+                        ((self.config.nfft_tx >> 1) + sc_range[0]) : (
+                            (self.config.nfft_tx >> 1) + sc_range[1] + 1
+                        )
+                    ] = np.random.choice(sym, len(range(sc_range[0], sc_range[1] + 1)))
+                else:
+                    wb_fd[
+                        ((self.config.nfft_tx >> 1) + sc_range[0]) : (
+                            (self.config.nfft_tx >> 1) + sc_range[1] + 1
+                        )
+                    ] = 1
+
+                wb_fd = ifftshift(wb_fd)
+
+            elif gen_mode == "ZadoffChu":
+                cf = self.config.nfft_tx % 2
+                q = 0  # q = 0.5
+                u = 3
+
+                N = self.config.nfft_tx
+                # N = sc_range[1] - sc_range[0] + 1
+                n = np.arange(0, N)
+                zc = np.exp(-1j * np.pi * u * n * (n + cf + 2 * q) / N)
+
+                wb_fd = zc.copy()
+                index_zeros = np.arange(sc_range[1], self.config.nfft_tx + sc_range[0])
+                wb_fd[index_zeros] = 0
+
+                # wb_fd = ifftshift(wb_fd)
+
+            if sig_fd is None:
+                sig_fd = wb_fd
             else:
-                sym = []
-                # raise ValueError('Invalid signal modulation: ' + modulation)
+                sig_fd += wb_fd
 
-            # Create the wideband sequence in frequency-domain
-            wb_fd = np.zeros((self.config.nfft_tx,), dtype="complex")
-            if len(sym) > 0:
-                wb_fd[
-                    ((self.config.nfft_tx >> 1) + sc_range[0]) : (
-                        (self.config.nfft_tx >> 1) + sc_range[1] + 1
-                    )
-                ] = np.random.choice(sym, len(range(sc_range[0], sc_range[1] + 1)))
-            else:
-                wb_fd[
-                    ((self.config.nfft_tx >> 1) + sc_range[0]) : (
-                        (self.config.nfft_tx >> 1) + sc_range[1] + 1
-                    )
-                ] = 1
-            if sig_mode == "wideband_null":
-                wb_fd[
-                    ((self.config.nfft_tx >> 1) - wb_null_sc) : (
-                        (self.config.nfft_tx >> 1) + wb_null_sc + 1
-                    )
-                ] = 0
-
-            wb_fd = ifftshift(wb_fd, axes=0)
-
-            # Convert the waveform to time-domain
-            wb_td = ifft(wb_fd, axis=0)
-
-        elif gen_mode == "ZadoffChu":
-            # prime_nums = [
-            #     1,
-            #     3,
-            #     5,
-            #     7,
-            #     11,
-            #     13,
-            #     17,
-            # ]  # , 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
-            cf = self.config.nfft_tx % 2
-            q = 0
-            # q = 0.5
-            # u = np.random.choice(prime_nums)
-            u = 3
-
-            N = self.config.nfft_tx
-            # N = self.config.sc_range[1] - self.config.sc_range[0] + 1
-            n = np.arange(0, N)
-            zc = np.exp(-1j * np.pi * u * n * (n + cf + 2 * q) / N)
-
-            wb_fd = zc.copy()
-            index_zeros = np.arange(
-                self.config.sc_range[1], self.config.nfft_tx + self.config.sc_range[0]
-            )
-            wb_fd[index_zeros] = 0
-
-            # wb_fd = ifftshift(wb_fd, axes=0)
-            wb_td = ifft(wb_fd, axis=0)
-
-        elif gen_mode == "ofdm":
-            # N_blocks = 1000
-            N_cp = 256
-            N_fft = 768
-            # M = 16
-            n_vec = np.arange(N_fft)
-            x = np.exp(1j * np.pi * n_vec**2 / N_fft)
-            x_cp = np.concatenate((x[-N_cp:], x))
-            wb_td = x_cp
-            # wb_td = np.tile(x_cp, N_blocks)
+        # Convert the waveform to time-domain
+        sig_td = ifft(sig_fd)
 
         # Normalize the signal
-        wb_td /= np.max([np.abs(wb_td.real), np.abs(wb_td.imag)])
+        sig_td /= np.max([np.abs(sig_td.real), np.abs(sig_td.imag)])
 
         self.print("Wide-band signal generation done", thr=2)
 
-        return wb_td
+        return sig_td
 
     def create_mesh_grid(self, npoints=1000, xlim=(1, 1)):
         # Create a set of points x uniformly distributed in the area using meshgrid
@@ -1253,7 +1249,9 @@ class SignalUtils(General):
         # alpha_aoa = 1.0
 
         if not getattr(self, "aoa_kalman_filter", None):
-            self.aoa_kalman_filter = AoAKalmanFilter(dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3)
+            self.aoa_kalman_filter = AoAKalmanFilter(
+                dt=0.1, sigma_meas_deg=np.sqrt(5.0), sigma_acc_deg=0.3
+            )
 
         aoa_last = aoa_list[-1] if len(aoa_list) > 0 else 0 if aoa is None else aoa
         if aoa is None:
@@ -1321,4 +1319,3 @@ class SignalUtils(General):
         aoa_list.append(aoa)
 
         return rx_phase_list, aoa_list
-
