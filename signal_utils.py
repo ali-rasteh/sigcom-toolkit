@@ -140,7 +140,7 @@ class SignalUtilsConfig(GeneralConfig):
         if self.n_samples_trx is None:
             self.n_samples_trx = min(self.n_samples_tx, self.n_samples_rx)
         if self.sc_range_ch is None:
-            self.sc_range_ch = [-1 * self.n_samples_trx // 2, self.n_samples_trx // 2 - 1]
+            self.sc_range_ch = (-1 * self.n_samples_trx // 2, self.n_samples_trx // 2 - 1)
         if self.n_samples_ch is None:
             self.n_samples_ch = self.sc_range_ch[1] - self.sc_range_ch[0] + 1
         if self.nfft is None:
@@ -654,21 +654,21 @@ class SignalUtils(General):
         seed=100,
     ):
         if sc_ranges is not None:
-            bw_ranges = [
-                [
+            bw_ranges = tuple([
+                (
                     sc_range[0] * self.config.fs_tx / self.config.nfft_tx,
                     sc_range[1] * self.config.fs_tx / self.config.nfft_tx,
-                ]
+                )
                 for sc_range in sc_ranges
-            ]
+            ])
         elif bw_ranges is not None:
-            sc_ranges = [
-                [
+            sc_ranges = tuple([
+                (
                     int(np.round(bw_range[0] * self.config.nfft_tx / self.config.fs_tx)),
                     int(np.round(bw_range[1] * self.config.nfft_tx / self.config.fs_tx)),
-                ]
+                )
                 for bw_range in bw_ranges
-            ]
+            ])
         else:
             raise ValueError("Either sc_ranges or bw_ranges must be provided")
 

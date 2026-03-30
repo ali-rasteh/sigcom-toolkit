@@ -1,7 +1,7 @@
 import contextlib
 import copy
 import datetime
-from enum import Enum
+import functools
 import hashlib
 import json
 import os
@@ -9,13 +9,15 @@ import random
 import string
 import subprocess
 import time
-from dataclasses import dataclass, fields, replace
+import traceback
+from dataclasses import dataclass, fields
+from enum import Enum
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 with contextlib.suppress(BaseException):
-    import torch # type: ignore # noqa: I001
+    import torch  # type: ignore # noqa: I001
 
 
 class DebugMode(Enum):
@@ -23,6 +25,7 @@ class DebugMode(Enum):
     LOW = 1
     MEDIUM = 2
     HIGH = 3
+
 
 @dataclass(kw_only=True)
 class GeneralConfig:
@@ -107,7 +110,7 @@ class General:
         if suffix_list and any(name.endswith(s) for s in suffix_list):
             suffix = next(s for s in suffix_list if name.endswith(s))
             # Extract the original method name
-            orig_name = name[:-len(suffix)]
+            orig_name = name[: -len(suffix)]
 
             # Fetch and return the original method.
             # If the original method doesn't exist, this naturally raises an AttributeError.
@@ -115,6 +118,65 @@ class General:
 
         # If the method doesn't have the suffix and wasn't found, raise the standard error
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    def debug_wrapper(self, func):
+        """
+        Decorator that wraps methods to enable automatic exception handling and logging
+        when debug_mode is set to HIGH.
+
+        When debug_mode is HIGH:
+        - Catches exceptions instead of raising them
+        - Logs detailed error information
+        - Continues execution for debugging purposes
+
+        For other debug modes, the method executes normally.
+
+        Args:
+            func: The method to be wrapped
+
+        Returns:
+            The wrapped function with debug capabilities
+        """
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if self.config.debug_mode == DebugMode.HIGH:
+                try:
+                    result = func(*args, **kwargs)
+                    return result
+                except Exception as e:
+                    self.print(
+                        f"[DEBUG HIGH] Exception in {func.__name__}: {type(e).__name__}: {str(e)}",
+                        thr=0
+                    )
+                    self.print(f"[DEBUG HIGH] Traceback:\n{traceback.format_exc()}", thr=4)
+                    return None
+            else:
+                # Execute normally for other debug modes
+                return func(*args, **kwargs)
+
+        return wrapper
+
+    def apply_debug_wrapper(self, class_obj):
+        """
+        Applies the debug_wrapper decorator to all public methods of a class instance.
+        This should be called in subclass __init__ methods to enable debug wrapping.
+
+        Args:
+            class_obj: The class instance to apply debug wrapping to
+        """
+        if self.config.debug_mode == DebugMode.HIGH:
+            for attr_name in dir(class_obj):
+                if not attr_name.startswith('__'):
+                    attr = getattr(class_obj, attr_name)
+                    if callable(attr) and not isinstance(attr, type):
+                        try:
+                            wrapped_method = self.debug_wrapper(attr)
+                            setattr(class_obj, attr_name, wrapped_method)
+                        except Exception as e:
+                            self.print(
+                                f"[DEBUG HIGH] Could not wrap method {attr_name}: {str(e)}",
+                                thr=1
+                            )
 
     def create_dirs(self, dir_list=()):
         """
@@ -225,15 +287,15 @@ class General:
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed_all(seed)
             elif lib == "cupy":
-                import cupy as cp   # type: ignore # noqa: I001
+                import cupy as cp  # type: ignore # noqa: I001
 
                 cp.random.seed(seed)
             elif lib == "tensorflow":
-                import tensorflow as tf # type: ignore # noqa: I001
+                import tensorflow as tf  # type: ignore # noqa: I001
 
                 tf.random.set_seed(seed)
             elif lib == "sionna":
-                import sionna   # type: ignore # noqa: I001
+                import sionna  # type: ignore # noqa: I001
 
                 sionna.phy.config.seed = seed
             else:
@@ -456,7 +518,7 @@ class GeneralParallel(General):
         if not self.config.import_cupy:
             return False
         try:
-            import cupy as cp   # type: ignore # noqa: I001
+            import cupy as cp  # type: ignore # noqa: I001
 
             # Check if CuPy is installed
             self.print(f"CuPy version: {cp.__version__}", thr=0)
@@ -489,7 +551,7 @@ class GeneralParallel(General):
         """
 
         if self.config.use_cupy:
-            import cupy as cp   # type: ignore # noqa: I001
+            import cupy as cp  # type: ignore # noqa: I001
 
             return cp.cuda.Device(self.config.gpu_id)
         else:
@@ -504,7 +566,7 @@ class GeneralParallel(General):
             None
         """
 
-        import cupy as cp   # type: ignore # noqa: I001
+        import cupy as cp  # type: ignore # noqa: I001
 
         with cp.cuda.Device(self.config.gpu_id) as device:
             self.print(f"Current device: {device}", 0)
@@ -523,7 +585,7 @@ class GeneralParallel(General):
             - Total GPU memory in bytes.
         """
 
-        import cupy as cp   # type: ignore # noqa: I001
+        import cupy as cp  # type: ignore # noqa: I001
 
         with cp.cuda.Device(self.config.gpu_id):
             mempool = cp.get_default_memory_pool()
@@ -543,7 +605,7 @@ class GeneralParallel(General):
         """
 
         self.print("Starting GPU warmup.", thr=0)
-        import cupy as cp   # type: ignore # noqa: I001
+        import cupy as cp  # type: ignore # noqa: I001
 
         with cp.cuda.Device(self.config.gpu_id):
             start = time.time()
@@ -570,7 +632,7 @@ class GeneralParallel(General):
         """
 
         self.print("Starting CPU and GPU times compare.", thr=0)
-        import cupy as cp   # type: ignore # noqa: I001
+        import cupy as cp  # type: ignore # noqa: I001
         import numpy
 
         # Generate data
