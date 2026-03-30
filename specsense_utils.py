@@ -1,4 +1,6 @@
 import contextlib
+import itertools
+import math
 import os
 from dataclasses import dataclass
 
@@ -51,6 +53,80 @@ class SpecSenseUtils(SignalUtils):
                 start = randint(0, dim - size + 1)
                 size = min(size, dim - start)
                 region_slices.append(slice(start, start + size))
+            regions.append(tuple(region_slices))
+
+        return regions
+
+    @staticmethod
+    def generate_random_regions_with_guards(
+        shape=(1000,), n_regions=1, min_size=None, max_size=None, size_sam_mode="log", n_guards=10
+    ):
+        regions = []
+        ndims = len(shape)
+
+        # 1. Determine how to divide the space into a grid
+        # We find the ceiling of the N-th root of n_regions to get enough chunks per dimension
+        chunks_per_dim = math.ceil(n_regions ** (1.0 / ndims))
+
+        # 2. Create an iterator for all grid coordinates (e.g., (0,0), (0,1), (1,0) in 2D)
+        chunk_coords_iter = itertools.product(range(chunks_per_dim), repeat=ndims)
+
+        for _ in range(n_regions):
+            try:
+                chunk_coords = next(chunk_coords_iter)
+            except StopIteration:
+                break # We've generated all required regions
+
+            region_slices = []
+
+            for d, dim in enumerate(shape):
+                # Calculate the total span of the current grid chunk for this dimension
+                chunk_size_total = dim // chunks_per_dim
+                chunk_start = chunk_coords[d] * chunk_size_total
+
+                # Reserve M bins at the end of the chunk to mathematically guarantee separation
+                available_chunk_size = chunk_size_total - n_guards
+
+                if available_chunk_size <= 0:
+                    raise ValueError(
+                        f"Shape dimension {dim} is too small to divide into {chunks_per_dim} "
+                        f"chunks while maintaining M={n_guards} guard bins."
+                    )
+
+                # Determine allowed size bounds
+                if min_size is not None and max_size is not None:
+                    s1 = min_size[d]
+                    s2 = max_size[d] + 1
+                else:
+                    s1 = 1
+                    s2 = min(101, (dim + 1) // 2 + 1)
+
+                # Clamp the max size so it doesn't exceed our available chunk space
+                s2 = min(s2, available_chunk_size + 1)
+                s1 = min(s1, s2 - 1)
+                s1 = 1 if s1 <= 0 else s1
+
+                # Sample the size
+                if size_sam_mode == "lin":
+                    size = randint(s1, max(s1, s2 - 1))
+                elif size_sam_mode == "log":
+                    if s2 - 1 < s1:
+                        size = s1
+                    else:
+                        margin = 1e-9
+                        size_val = uniform(np.log10(s1), np.log10(max(s1, s2 - margin)))
+                        size = int(10**size_val)
+
+                # Final safety clamp for size
+                size = min(size, available_chunk_size)
+
+                # Randomly place the signal within the restricted boundaries of this specific chunk
+                max_start_offset = available_chunk_size - size
+                start_offset = randint(0, max_start_offset)
+
+                actual_start = chunk_start + start_offset
+                region_slices.append(slice(actual_start, actual_start + size))
+
             regions.append(tuple(region_slices))
 
         return regions
