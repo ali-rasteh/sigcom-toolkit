@@ -90,6 +90,8 @@ class General:
         self.methods_suffix_list = None
         self.print(f"Initializing {self.__class__.__name__}", thr=0)
 
+        self.apply_debug_wrapper(self)
+
     # def __init_subclass__(cls, **kwargs):
     #     super().__init_subclass__(**kwargs)
 
@@ -139,20 +141,16 @@ class General:
         """
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            if self.config.debug_mode == DebugMode.HIGH:
-                try:
-                    result = func(*args, **kwargs)
-                    return result
-                except Exception as e:
-                    self.print(
-                        f"[DEBUG HIGH] Exception in {func.__name__}: {type(e).__name__}: {str(e)}",
-                        thr=0
-                    )
-                    self.print(f"[DEBUG HIGH] Traceback:\n{traceback.format_exc()}", thr=4)
-                    return None
-            else:
-                # Execute normally for other debug modes
-                return func(*args, **kwargs)
+            try:
+                result = func(*args, **kwargs)
+                return result
+            except Exception as e:
+                self.print(
+                    f"[DEBUG HIGH] Exception in {func.__name__}: {type(e).__name__}: {str(e)}",
+                    thr=0
+                )
+                self.print(f"[DEBUG HIGH] Traceback:\n{traceback.format_exc()}", thr=4)
+                return None
 
         return wrapper
 
