@@ -6,15 +6,15 @@ from matplotlib.patches import Circle, FancyArrow, Wedge
 from numpy.fft import fft, fftshift
 from scipy.signal import welch
 
-from .general import General, GeneralConfig
+from .base import Base, BaseConfig
 
 
 @dataclass(kw_only=True)
-class PlotUtilsConfig(GeneralConfig):
+class PlotUtilsConfig(BaseConfig):
     pass
 
 
-class PlotUtils(General):
+class PlotUtils(Base):
     def __init__(self, config: PlotUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 

@@ -6,7 +6,7 @@ sigcom-toolkit is a signal processing and communication library designed to faci
 
 ## Features
 
-- **General Utilities**: Includes various utility functions for file handling, argument parsing, and system operations.
+- **Base Utilities**: Includes various utility functions for file handling, argument parsing, and system operations.
 - **Signal Processing**: Offers a range of signal processing tools including Fourier transforms, filtering, and modulation techniques.
 - **Filtering**: Implements various filtering techniques such as low-pass, high-pass, and band-pass filters.
 - **Scientific Computing**: Integrates with NumPy and SciPy for numerical computations.

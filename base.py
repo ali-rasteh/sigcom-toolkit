@@ -27,8 +27,19 @@ class DebugMode(Enum):
     HIGH = 3
 
 
+class PostInitMeta(type):
+    def __call__(cls, *args, **kwargs):
+        # This fully executes __new__ AND the entire __init__ chain
+        obj = super().__call__(*args, **kwargs)
+
+        # Once __init__ is 100% done, trigger the post-init chain
+        if hasattr(obj, '__post_init__'):
+            obj.__post_init__()
+
+        return obj
+
 @dataclass(kw_only=True)
-class GeneralConfig:
+class BaseConfig:
     verbose_level: int = 5
     plot_level: int = 5
     figs_dir: str = "./figs/"
@@ -72,13 +83,13 @@ class GeneralConfig:
         return f"{self.__class__.__name__}({', '.join(f'{f.name}={getattr(self, f.name)}' for f in fields(self))})"
 
 
-class General:
+class Base(metaclass=PostInitMeta):
     """
-    A class used to represent general utility functions and configurations.
+    A class used to represent base utility functions and configurations.
     Attributes
     """
 
-    def __init__(self, config: GeneralConfig, **overrides):
+    def __init__(self, config: BaseConfig, **overrides):
         # strict override: only allow existing fields
         allowed = set(config.__dataclass_fields__.keys())
         unknown = set(overrides) - allowed
@@ -90,6 +101,7 @@ class General:
         self.methods_suffix_list = None
         self.print(f"Initializing {self.__class__.__name__}", thr=0)
 
+    def __post_init__(self):
         self.apply_debug_wrapper(self)
 
     # def __init_subclass__(cls, **kwargs):
@@ -424,15 +436,15 @@ class General:
 
 
 @dataclass(kw_only=True)
-class GeneralParallelConfig(GeneralConfig):
+class BaseParallelConfig(BaseConfig):
     import_cupy: bool = False
     use_cupy: bool = False
     gpu_id: int = 0
     use_torch: bool = False
 
 
-class GeneralParallel(General):
-    def __init__(self, config: GeneralParallelConfig, **overrides):
+class BaseParallel(Base):
+    def __init__(self, config: BaseParallelConfig, **overrides):
         # strict override: only allow existing fields
         super().__init__(config, **overrides)
 

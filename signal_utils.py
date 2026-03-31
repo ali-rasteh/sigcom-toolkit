@@ -6,7 +6,7 @@ from numpy.fft import fft, fftshift, ifft, ifftshift
 from numpy.random import randn
 from scipy.signal import firwin, freqz, lfilter, welch
 
-from .general import General, GeneralConfig
+from .base import Base, BaseConfig
 from .plot_utils import PlotUtils, PlotUtilsConfig
 
 
@@ -86,7 +86,7 @@ class AoAKalmanFilter:
 
 
 @dataclass(kw_only=True)
-class SignalUtilsConfig(GeneralConfig):
+class SignalUtilsConfig(BaseConfig):
     fc: float = None
     fs: float = 1e9
     fs_tx: float = None
@@ -196,7 +196,7 @@ class SignalUtilsConfig(GeneralConfig):
             ]
 
 
-class SignalUtils(General):
+class SignalUtils(Base):
     def __init__(self, config: SignalUtilsConfig, **overrides):
         super().__init__(config, **overrides)
 
