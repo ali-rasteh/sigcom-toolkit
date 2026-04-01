@@ -33,7 +33,7 @@ class PostInitMeta(type):
         obj = super().__call__(*args, **kwargs)
 
         # Once __init__ is 100% done, trigger the post-init chain
-        if hasattr(obj, '__post_init__'):
+        if hasattr(obj, "__post_init__"):
             obj.__post_init__()
 
         return obj
@@ -159,7 +159,7 @@ class Base(metaclass=PostInitMeta):
             except Exception as e:
                 self.print(
                     f"[DEBUG HIGH] Exception in {func.__name__}: {type(e).__name__}: {str(e)}",
-                    thr=0
+                    thr=0,
                 )
                 self.print(f"[DEBUG HIGH] Traceback:\n{traceback.format_exc()}", thr=4)
                 return None
@@ -176,7 +176,7 @@ class Base(metaclass=PostInitMeta):
         """
         if self.config.debug_mode == DebugMode.HIGH:
             for attr_name in dir(class_obj):
-                if not attr_name.startswith('__'):
+                if not attr_name.startswith("__"):
                     attr = getattr(class_obj, attr_name)
                     if callable(attr) and not isinstance(attr, type):
                         try:
@@ -184,8 +184,7 @@ class Base(metaclass=PostInitMeta):
                             setattr(class_obj, attr_name, wrapped_method)
                         except Exception as e:
                             self.print(
-                                f"[DEBUG HIGH] Could not wrap method {attr_name}: {str(e)}",
-                                thr=1
+                                f"[DEBUG HIGH] Could not wrap method {attr_name}: {str(e)}", thr=1
                             )
 
     def create_dirs(self, dir_list=()):

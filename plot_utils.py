@@ -5,18 +5,96 @@ import numpy as np
 from matplotlib.patches import Circle, FancyArrow, Wedge
 from numpy.fft import fft, fftshift
 from scipy.signal import welch
+import os
+import contextlib
 
 from .base import Base, BaseConfig
 
 
 @dataclass(kw_only=True)
 class PlotUtilsConfig(BaseConfig):
-    pass
+    plot_backend: str = "auto"
+    plot_show_block: bool | None = None
+    plot_webagg_host: str = "0.0.0.0"
+    plot_webagg_port: int = 8988
+    plot_webagg_open_browser: bool = False
 
 
 class PlotUtils(Base):
+    _active_mpl_backend: str | None = None
+    _webagg_announced: bool = False
+
     def __init__(self, config: PlotUtilsConfig, **overrides):
         super().__init__(config, **overrides)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.configure_matplotlib_backend()
+
+    def configure_matplotlib_backend(self):
+        """
+        Configure matplotlib backend from config with sensible headless defaults.
+        """
+        requested_backend = getattr(self.config, "plot_backend", "auto")
+        if requested_backend is None:
+            requested_backend = "auto"
+
+        requested_backend = str(requested_backend).strip()
+        requested_backend_lc = requested_backend.lower()
+
+        if requested_backend_lc in {"", "default", "none"}:
+            return
+
+        backend_to_use = requested_backend
+        if requested_backend_lc == "auto":
+            display_available = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+            backend_to_use = "WebAgg" if not display_available else None
+
+        if not backend_to_use:
+            return
+
+        with contextlib.suppress(Exception):
+            import matplotlib
+
+            if str(backend_to_use).lower() == "webagg":
+                matplotlib.rcParams["webagg.address"] = getattr(
+                    self.config, "plot_webagg_host", "0.0.0.0"
+                )
+                matplotlib.rcParams["webagg.port"] = int(
+                    getattr(self.config, "plot_webagg_port", 8988)
+                )
+                matplotlib.rcParams["webagg.open_in_browser"] = bool(
+                    getattr(self.config, "plot_webagg_open_browser", False)
+                )
+
+            target_backend = str(backend_to_use).lower()
+            current_backend = str(plt.get_backend()).lower()
+            if current_backend != target_backend:
+                plt.switch_backend(backend_to_use)
+                Base._active_mpl_backend = str(plt.get_backend()).lower()
+                Base._webagg_announced = False
+
+            if str(plt.get_backend()).lower() == "webagg":
+                plot_url = (
+                    f"http://{matplotlib.rcParams['webagg.address']}"
+                    f":{matplotlib.rcParams['webagg.port']}/"
+                )
+                if not Base._webagg_announced:
+                    self.print(
+                        f"WebAgg backend active. Open plots from your browser at {plot_url}",
+                        thr=0,
+                    )
+                    Base._webagg_announced = True
+
+    def show_plot(self, block=None):
+        if block is None:
+            block = self.config.plot_show_block
+
+        if block is None:
+            block = str(plt.get_backend()).lower() not in {"webagg", "agg"}
+            # block = False
+
+        plt.show(block=block)
 
     @staticmethod
     def lin_to_db(x, mode="pow"):
@@ -98,7 +176,7 @@ class PlotUtils(Base):
 
         # plt.axvline(x=30e6, color='g', linestyle='--', linewidth=1)
 
-        plt.show()
+        self.show_plot()
 
     @staticmethod
     def set_plot_params(ax=None, lines=None, plot_params_dict=None):
